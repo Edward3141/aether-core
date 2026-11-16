@@ -60,11 +60,11 @@ class Orchestrator:
         """Current process metrics plus a read-only system snapshot and memory count."""
         snapshot = collect_snapshot()
         metrics = [metric.__dict__ for metric in self.scorecard.snapshot()]
-        unverified = self.knowledge.search("", verified_only=False, limit=100)
-        verified = self.knowledge.search("", verified_only=True, limit=100)
+        unverified = self.knowledge.count(status="unverified")
+        verified = self.knowledge.count(status="verified")
         return build_report(
             snapshot=snapshot.to_dict(),
             agent_metrics=metrics,
             findings=[{"title": "Knowledge ledger", "description":
-                       f"{len(unverified)} unverified observations; {len(verified)} verified entries"}],
+                       f"{unverified} unverified observations; {verified} verified entries"}],
         )
