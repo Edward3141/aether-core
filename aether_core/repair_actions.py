@@ -42,17 +42,20 @@ class ActionResult(BaseModel):
     verification: list[str] = Field(default_factory=list)
 
 
-def target_identity(root: Path) -> str:
-    """Bind plans to the canonical local target directory and host identity."""
-    canonical = root.resolve(strict=True)
-    if not canonical.is_dir():
-        raise ValueError("Target root must be an existing directory.")
-    metadata = canonical.stat()
+def _identity_from_stat(canonical: Path, metadata: os.stat_result) -> str:
     material = (
         f"{platform.node()}|{os.name}|{canonical}|"
         f"{metadata.st_dev}|{metadata.st_ino}"
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def target_identity(root: Path) -> str:
+    """Bind plans to the canonical local target directory and host identity."""
+    canonical = root.resolve(strict=True)
+    if not canonical.is_dir():
+        raise ValueError("Target root must be an existing directory.")
+    return _identity_from_stat(canonical, canonical.stat())
 
 
 def _supports_race_safe_directory_creation() -> bool:
@@ -66,7 +69,9 @@ def _supports_race_safe_directory_creation() -> bool:
     )
 
 
-def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult:
+def _ensure_directory(
+    params: EnsureDirectoryParams, root: Path, expected_target_identity: str | None = None
+) -> ActionResult:
     """Create each path component relative to a pinned directory descriptor.
 
     Fail closed on platforms without openat-style directory and no-follow support.
@@ -91,6 +96,13 @@ def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult
             child = os.open(root_part, flags, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = child
+
+        if expected_target_identity is not None:
+            opened_identity = _identity_from_stat(canonical_root, os.fstat(descriptor))
+            if opened_identity != expected_target_identity:
+                raise PermissionError(
+                    "Approved target changed before the filesystem operation began."
+                )
 
         for part in params.relative_path.split("/"):
             try:
@@ -193,7 +205,9 @@ def _execute_approved_plan(db: Database, plan_id: str, digest: str,
     schema, handler = _HANDLERS[action_id]
     try:
         params = schema.model_validate_json(claim["params_json"])
-        result = handler(params, Path(claim["target_root"]))
+        result = handler(
+            params, Path(claim["target_root"]), claim["target_identity"]
+        )
         verification = PostRepairVerifier().verify(
             action_id, params.model_dump(mode="json"), Path(claim["target_root"])
         )
