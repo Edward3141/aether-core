@@ -25,6 +25,7 @@ def build_parser():
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("doctor", help="Run fixed read-only local diagnostics")
+    sub.add_parser("sandbox-check", help="Run a fixed diagnostic in the restricted Docker sandbox")
     sub.add_parser("audit", help="Collect evidence and analyze it with configured AI")
 
     ask = sub.add_parser("ask", help="Ask the configured default AI model")
@@ -45,6 +46,16 @@ def build_parser():
 
 async def run(args):
     db = Database(database_path())
+    if args.command == "sandbox-check":
+        from .sandbox.docker_runner import run_check
+
+        result = run_check("python-version")
+        console.print(Panel(
+            result.output or "(no output)",
+            title=f"Docker sandbox: {result.check_id} — exit {result.exit_code}",
+        ))
+        return result.exit_code
+
     if args.command == "doctor":
         report = collect_diagnostics()
         console.print(Panel("AETHER CORE diagnostic report"))
