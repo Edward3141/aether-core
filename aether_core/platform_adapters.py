@@ -18,8 +18,8 @@ _TIMEOUT_SECONDS = 5
 _MAX_OUTPUT = 64_000
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\s*[:=]\s*)\S+"),
-    re.compile(r"(?i)(authorization\s*:\s*bearer\s+)\S+"),
-    re.compile(r"(?i)(https?://)[^/@\s]+:[^/@\s]+@"),
+    re.compile(r"(?i)(authorization\s*:\s*bearer\s+)(\S+)"),
+    re.compile(r"(?i)(https?://)([^/@\s]+:[^/@\s]+@)"),
 )
 
 
