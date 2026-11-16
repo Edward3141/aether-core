@@ -7,7 +7,7 @@ from .models import AuditReport, RemediationProposal
 from .extended.knowledge import KnowledgeStore
 from .extended.quality import AgentScorecard
 from .skills import build_builtin_registry
-from .repair_actions import create_action_plan
+from .repair_actions import Executor, create_action_plan
 
 
 class Orchestrator:
@@ -15,6 +15,7 @@ class Orchestrator:
         self.db = database
         self.scout, self.analyst = Scout(), Analyst()
         self.fixer, self.auditor = Fixer(), Auditor()
+        self.executor = Executor(database)
         # Integrated services use a sibling SQLite file; existing database schema is untouched.
         memory_path = database.path.with_name("aether-core-knowledge.sqlite3")
         self.knowledge = KnowledgeStore(memory_path)
