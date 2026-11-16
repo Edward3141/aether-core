@@ -18,7 +18,7 @@ An approval record is not an execution token. It does not start a process, autho
 
 ## Current limitations
 
-- No Docker sandbox or repair executor is included.
+- The Docker sandbox currently runs one fixed, read-only Python version check only; no repair executor or general-purpose command runner is included.
 - No privilege escalation is implemented.
 - No network-facing MCP authentication layer is implemented; do not expose the stdio server through an unauthenticated bridge.
 - No independent penetration test or security audit has been performed.
