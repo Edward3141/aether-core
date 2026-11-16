@@ -71,7 +71,7 @@ def test_fixed_probe_kills_a_timed_out_process(monkeypatch):
     class FakeProcess:
         stdout = BytesIO(b"partial output")
 
-        def wait(self, timeout):
+        def wait(self, timeout=None):
             if not captured.get("killed"):
                 raise adapters.subprocess.TimeoutExpired("systemctl", timeout)
             return -9
