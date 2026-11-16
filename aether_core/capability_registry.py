@@ -29,6 +29,11 @@ class Capability:
 
 
 ALL_ROLES = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "EXECUTOR")
+IMPLEMENTATION_STATUSES = {
+    "implemented_read_only", "partial_read_only", "windows_only",
+    "metadata_only", "proposal_contract_only", "not_implemented",
+    "partial_one_action",
+}
 READ_ROLES = ("SCOUT", "ANALYST", "AUDITOR")
 FIX_ROLES = ("FIXER", "AUDITOR", "EXECUTOR")
 
@@ -44,7 +49,7 @@ _CATALOG = (
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("ps aux", "top -b -n 1"), "macos": ("ps aux", "top -l 1"),
                 "windows": ("Get-Process", "tasklist")},
-               "read_only", implementation_status="implemented_read_only"),
+               "read_only", implementation_status="partial_read_only"),
     Capability("service.inspect", "services", "Inspect service state without changing it",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("systemctl list-units --type=service", "service --status-all"),
@@ -54,7 +59,7 @@ _CATALOG = (
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("df -h", "lsblk"), "macos": ("df -h", "diskutil list"),
                 "windows": ("Get-Volume", "Get-PSDrive")},
-               "read_only", implementation_status="implemented_read_only"),
+               "read_only", implementation_status="partial_read_only"),
     Capability("memory.inspect", "resources", "Inspect memory and virtual-memory pressure",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("free -h", "vmstat"), "macos": ("vm_stat",), 
@@ -124,6 +129,8 @@ class CapabilityRegistry:
         for item in capabilities:
             if item.executable:
                 raise ValueError("Capability metadata must never enable command execution.")
+            if item.implementation_status not in IMPLEMENTATION_STATUSES:
+                raise ValueError(f"Capability {item.capability_id!r} has an invalid implementation status.")
             if not item.roles or not set(item.roles).issubset(ALL_ROLES):
                 raise ValueError(f"Capability {item.capability_id!r} has invalid role scope.")
             if not item.platforms or not set(item.platforms).issubset(valid_platforms):
