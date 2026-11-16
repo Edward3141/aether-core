@@ -1,5 +1,6 @@
 """Command line interface. Created by Edward Tejada."""
 import argparse
+import json
 import asyncio
 from datetime import UTC, datetime, timedelta
 
@@ -30,6 +31,11 @@ def build_parser():
     sub.add_parser("sandbox-check", help="Run a fixed diagnostic in the restricted Docker sandbox")
     sub.add_parser("audit", help="Run all four agents and update integrated intelligence services")
     sub.add_parser("status", help="Show integrated system snapshot, agent metrics and knowledge ledger")
+    sub.add_parser("skills", help="List the built-in, policy-controlled skills")
+
+    skill = sub.add_parser("skill", help="Execute one registered read-only skill")
+    skill.add_argument("name", help="Exact registered skill name")
+    skill.add_argument("--input", default="{}", help="JSON object with skill arguments")
 
     report = sub.add_parser("report", help="Export an AETHER CORE intelligence report")
     report.add_argument("--format", choices=("json", "markdown"), default="markdown")
@@ -67,8 +73,21 @@ async def run(args):
             console.print(Text(f"{finding.risk.value} {finding.title}: {finding.detail}"))
         return 0
 
-    if args.command in {"status", "report"}:
+    if args.command in {"status", "report", "skills", "skill"}:
         workflow = Orchestrator(db)
+        if args.command == "skills":
+            console.print(Text(json.dumps(workflow.skills.list(), ensure_ascii=False, indent=2)))
+            return 0
+        if args.command == "skill":
+            try:
+                skill_args = json.loads(args.input)
+            except json.JSONDecodeError as exc:
+                raise ValueError("skill --input must be valid JSON") from exc
+            result = workflow.skills.execute(
+                args.name, caller="HUMAN", arguments=skill_args
+            )
+            console.print(Text(json.dumps(result, ensure_ascii=False, indent=2, default=str)))
+            return 0
         payload = workflow.intelligence_report()
         rendered = report_json(payload) if args.command == "report" and args.format == "json" else (
             report_markdown(payload) if args.command == "report" else report_markdown(payload))
