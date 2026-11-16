@@ -15,9 +15,7 @@ AETHER CORE is organized as **four intelligence agents plus one supervised execu
 ## Platform adapters
 
 The registry maps capabilities to documented command references for Linux, macOS and
-Windows. It detects the current platform and filters the catalog accordingly. It checks
-whether referenced executables are present on PATH, but this is advisory and does not
-run them. PowerShell cmdlets are listed as references and are not treated as executables.
+Windows. It detects the current platform and filters the catalog accordingly. It reports `available_command_binaries` by checking whether referenced executable binaries are present on PATH; this is advisory and does not run them. Native PowerShell cmdlets are listed as references but are not PATH binaries, so they are not reported as available by that lookup.
 
 ## Security invariants
 
