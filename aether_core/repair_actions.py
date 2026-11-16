@@ -50,26 +50,54 @@ def target_identity(root: Path) -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
+def _supports_race_safe_directory_creation() -> bool:
+    """Return whether this runtime supports descriptor-relative no-follow creation."""
+    return (
+        os.name != "nt"
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+    )
+
+
 def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult:
-    root = root.resolve(strict=True)
-    if not root.is_dir():
+    """Create each path component relative to a pinned directory descriptor.
+
+    Fail closed on platforms without openat-style directory and no-follow support.
+    This avoids path re-resolution races and symlink/reparse-point traversal.
+    """
+    if not _supports_race_safe_directory_creation():
+        raise PermissionError(
+            "This platform does not provide the required race-safe directory APIs; "
+            "the action is disabled here."
+        )
+
+    canonical_root = root.resolve(strict=True)
+    if not canonical_root.is_dir():
         raise ValueError("Target root must be a directory.")
-    current = root
-    for part in params.relative_path.split("/"):
-        current = current / part
-        if current.exists() or current.is_symlink():
-            if current.is_symlink():
-                raise PermissionError("Symlink traversal is not allowed.")
-            if not current.is_dir():
-                raise FileExistsError("A target path component is not a directory.")
-    target = root.joinpath(*params.relative_path.split("/"))
-    target.mkdir(parents=True, exist_ok=True)
+
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(canonical_root, flags)
+    try:
+        for part in params.relative_path.split("/"):
+            try:
+                os.mkdir(part, mode=0o755, dir_fd=descriptor)
+            except FileExistsError:
+                # Existing entries are accepted only if they can be opened as a
+                # real directory without following a symlink.
+                pass
+            child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+    finally:
+        os.close(descriptor)
+
     return ActionResult(
         action_id="ensure_directory",
         status="executed",
-        detail=f"Directory creation command completed: {params.relative_path}",
+        detail=f"Directory creation completed safely beneath the approved root: {params.relative_path}",
     )
-
 
 _HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
 
