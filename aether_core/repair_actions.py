@@ -73,11 +73,6 @@ def _supports_race_safe_directory_creation() -> bool:
     )
 
 
-def _mkdir_at(path: str, *, mode: int, dir_fd: int) -> None:
-    """Small seam for safe descriptor-relative directory creation."""
-    os.mkdir(path, mode=mode, dir_fd=dir_fd)
-
-
 def _mkdir_at(name: str, *, mode: int, dir_fd: int) -> None:
     """Small seam for deterministic failure-injection tests."""
     os.mkdir(name, mode=mode, dir_fd=dir_fd)
