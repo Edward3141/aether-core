@@ -71,7 +71,7 @@ def _verify_file_once(root: Path, relative_path: str, expected_sha256: str) -> N
         for part in parts[:-1]:
             descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
         file_descriptor = os.open(
-            parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptors[-1]
+            parts[-1], os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0), dir_fd=descriptors[-1]
         )
         metadata = os.fstat(file_descriptor)
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 16384:
