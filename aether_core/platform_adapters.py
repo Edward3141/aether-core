@@ -248,7 +248,7 @@ def collect_native_findings() -> list[Finding]:
         writable = os.access(home, os.W_OK)
         findings.append(_finding(
             "Home directory permissions",
-            f"Home path exists; symlink={is_link}; owner-write-access={writable}; mode={metadata.st_mode & 0o777:o}.",
+            f"Home path exists; symlink={is_link}; current-user-write-access={writable}; mode={metadata.st_mode & 0o777:o}.",
             ["Path.home", "Path.lstat", "os.access"],
             Risk.MEDIUM if is_link else Risk.INFO,
         ))
