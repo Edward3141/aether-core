@@ -1,4 +1,4 @@
-"""Local read-only MCP server. Created by Edward Tejada."""
+"""Local MCP server; it can persist plans but cannot authorize or execute repairs."""
 from typing import Any
 from mcp.server.fastmcp import FastMCP
 

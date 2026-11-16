@@ -1,14 +1,18 @@
-# AETHER CORE — Four Specialists and the Final Executor
+# AETHER CORE — Five Components: Four Intelligence Agents + Executor
 
 Created by Edward Tejada.
 
-## Sequence
+## Five-component sequence
 
-1. **SCOUT** runs fixed local diagnostics using explicit executable paths, argument arrays, timeouts and no shell. It records raw findings. Its configured model may write a clearly labelled summary; if the model is unavailable, fixed diagnostics still complete.
-2. **ANALYST** receives the structured audit report and produces an evidence-based assessment. It must distinguish facts from hypotheses and explain uncertainty.
-3. **FIXER** receives the analysis and returns a validated Pydantic remediation proposal. Invalid JSON is rejected and replaced with a conservative manual-investigation proposal.
-4. **AUDITOR** reviews the proposal and every typed action request for evidence gaps, privileges, scope, side effects and rollback. Its model output is advisory only. It cannot approve, authorize or execute anything.
-5. **EXECUTOR** is the final execution role. It receives only locally registered, schema-validated action plans produced after AUDITOR review. It displays the exact action, parameters, target, expiry and digest, then asks the human for a plan-specific confirmation. It executes only after the human types the exact authorization phrase. It cannot run model-generated shell commands or actions outside the local allow-list.
+AETHER CORE has **five cooperating components**: four intelligence agents followed by one supervised execution engine. The fifth component is not counted as a fifth reasoning agent; it is the controlled final-action component.
+
+1. **01 — SCOUT:** runs fixed local diagnostics using explicit executable paths, argument arrays, timeouts and no shell. It records raw findings. Its configured model may write a clearly labelled summary; if the model is unavailable, fixed diagnostics still complete.
+2. **02 — ANALYST:** receives the structured audit report and produces an evidence-based assessment. It must distinguish facts from hypotheses and explain uncertainty.
+3. **03 — FIXER:** receives the analysis and returns a validated Pydantic remediation proposal. Invalid JSON is rejected and replaced with a conservative manual-investigation proposal.
+4. **04 — AUDITOR:** reviews the proposal and every typed action request for evidence gaps, privileges, scope, side effects and rollback. Its model output is advisory only. It cannot approve, authorize or execute anything.
+5. **05 — EXECUTOR:** the final execution component. It receives only locally registered, schema-validated action plans produced after AUDITOR review. It displays the exact action, parameters, target, expiry and digest, then asks the human for a plan-specific confirmation. It executes only after the human types the exact authorization phrase. It cannot run model-generated shell commands or actions outside the local allow-list.
+
+**The fifth component is the execution boundary:** the first four components prepare and review; EXECUTOR carries out only the exact action the human explicitly authorizes.
 
 ## Human control
 
@@ -24,7 +28,8 @@ The specialist workflow ends with a proposal, its SHA-256 digest, an advisory re
 
 ## Model configuration
 
-Each agent can have its own model, API base and API key through AETHER_SCOUT_*, AETHER_ANALYST_*, AETHER_FIXER_* and AETHER_AUDITOR_*. Shared AETHER_MODEL, AETHER_API_BASE and AETHER_API_KEY values are fallbacks. Credentials must stay outside source control.
+Each intelligence agent can have its own model, API base and API key through AETHER_SCOUT_*, AETHER_ANALYST_*, AETHER_FIXER_* and AETHER_AUDITOR_*. Shared AETHER_MODEL, AETHER_API_BASE and AETHER_API_KEY values are fallbacks. Credentials must stay outside source control.
+
 ## Built-in Skills
 
 Skills are reusable, deterministic capabilities separate from agent roles. The core registry includes:
@@ -47,10 +52,9 @@ aether-core skill report.generate
 
 All current built-in skills are read-only. They do not execute commands or repairs.
 
-
 ## Role-specific Skill catalog
 
-The core registry contains exactly 50 skills for each specialist (200 total), separate from the four shared core service skills. Each specialist can invoke only its own role-scoped skills (and a human operator can inspect/use them through authorized interfaces).
+The core registry contains exactly 50 skills for each of the four intelligence agents (200 total), separate from the four shared core service skills. Each intelligence agent can invoke only its own role-scoped skills (and a human operator can inspect/use them through authorized interfaces).
 
 - **SCOUT (50):** host/platform inventory, OS/kernel, CPU/memory/disk, filesystems/mounts, network interfaces/routes/DNS, processes/services, package/runtime/container inventory, configuration/log discovery, hardware/resource snapshots, security-control metadata, event and evidence provenance, collection completeness and scope boundaries.
 - **ANALYST (50):** evidence classification, provenance/confidence, hypotheses, root cause, temporal/cross-source correlation, anomalies/trends, performance/capacity, network/DNS/TLS, permissions/configuration/vulnerability/dependency risk, threat modeling, blast radius, incident severity/timeline, uncertainty, evidence gaps and recommendation ranking.
@@ -59,9 +63,8 @@ The core registry contains exactly 50 skills for each specialist (200 total), se
 
 Role skills currently run as bounded structured-advisory handlers over explicitly supplied input. They do not pretend to perform external scans or mutate systems. The workflow invokes representative skills at each agent stage; the complete role catalogs are available through the registry. Any future skill that performs real observation or changes must have a concrete implementation, tests and its own permission boundary before being marked operational.
 
-
 ## Executor scope and limitations
 
-The first end-to-end executor handler is `ensure_directory`, a bounded operation below an existing selected root. No general shell, script, package installation, service restart, network or privileged execution is enabled. Unsupported action IDs and parameters are rejected. A new handler must be typed, versioned, allow-listed and tested for path safety, preconditions, impact, rollback and verification before it can be executed.
+The first end-to-end Executor handler is `ensure_directory`, a bounded operation below an existing selected root. No general shell, script, package installation, service restart, network or privileged execution is enabled. Unsupported action IDs and parameters are rejected. A new handler must be typed, versioned, allow-listed and tested for path safety, preconditions, impact, rollback and verification before it can be executed.
 
-The CLI command `execute-action` delegates to the Executor role, which presents the request and asks for the exact phrase `AUTHORIZE PLAN_ID SHA256`. The MCP server can create and return pending plans but cannot answer the human prompt or execute them.
+The CLI command `execute-action` delegates to the **05 EXECUTOR** component, which presents the request and asks for the exact phrase `AUTHORIZE PLAN_ID SHA256`. The `--by` value is an operator-supplied audit label, not proof of identity. The current filesystem mutation uses descriptor-relative no-follow APIs and is enabled only on supported Linux/macOS systems; Windows and unsupported platforms fail closed. The MCP server can create and return pending plans but cannot answer the human prompt or execute them.

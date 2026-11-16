@@ -7,6 +7,7 @@ from .extended.knowledge import KnowledgeStore
 from .extended.quality import AgentScorecard
 from .skills import build_builtin_registry
 from .repair_actions import Executor, create_action_plan
+from .capability_registry import CapabilityRegistry
 
 
 class Orchestrator:
@@ -15,6 +16,7 @@ class Orchestrator:
         self.scout, self.analyst = Scout(), Analyst()
         self.fixer, self.auditor = Fixer(), Auditor()
         self.executor = Executor(database)
+        self.capabilities = CapabilityRegistry()
         # Integrated services use a sibling SQLite file; existing database schema is untouched.
         memory_path = database.path.with_name("aether-core-knowledge.sqlite3")
         self.knowledge = KnowledgeStore(memory_path)
@@ -24,6 +26,7 @@ class Orchestrator:
         self.skills = build_builtin_registry(self.knowledge, self.scorecard)
         for agent in (self.scout, self.analyst, self.fixer, self.auditor):
             agent.bind_skills(self.skills)
+            agent.bind_capabilities(self.capabilities)
 
     async def audit(self) -> tuple[AuditReport, str]:
         try:

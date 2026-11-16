@@ -2,15 +2,17 @@
 
 Created by Edward Tejada.
 
-## Trust boundaries
+## Five-component trust boundaries
 
-- Operating-system diagnostics are fixed in source code and use argument arrays with `shell=False`.
-- Model output, diagnostic strings, MCP inputs and stored JSON are untrusted data.
-- Model-generated shell commands are not executed.
-- FIXER creates proposals only. It has no execution interface.
-- AUDITOR binds a human decision record to the SHA-256 hash of the exact proposal.
-- The CLI requires an interactive confirmation phrase before writing a decision record.
-- MCP tools are read-only and use local stdio transport.
+AETHER CORE has four intelligence agents and one supervised execution engine:
+
+- **01 — SCOUT:** operating-system diagnostics are fixed in source code and use argument arrays with `shell=False`.
+- **02 — ANALYST:** reasons over evidence; model output remains untrusted data.
+- **03 — FIXER:** creates typed proposals only. It has no execution interface.
+- **04 — AUDITOR:** reviews proposal scope and safety but cannot authorize a change.
+- **05 — EXECUTOR:** the only component permitted to invoke a registered repair handler, and only after the human explicitly authorizes each exact action.
+
+Model output, diagnostic strings, MCP inputs and stored JSON are untrusted data. Model-generated shell commands are never executed. An MCP call, skill invocation, proposal review or AUDITOR recommendation is not human consent.
 
 ## Approval record semantics
 
@@ -18,7 +20,9 @@ An approval record is not an execution token. It does not start a process, autho
 
 ## Current limitations
 
-- The Docker sandbox currently runs one fixed, read-only Python version check only; no repair executor or general-purpose command runner is included.
+- The Docker sandbox currently runs one fixed, read-only Python version check only; the separate repair Executor is limited to the typed `ensure_directory` handler and is not a general-purpose command runner.
+- The current `ensure_directory` mutation is enabled only where descriptor-relative `O_NOFOLLOW` APIs are available (Linux/macOS); Windows and unsupported platforms fail closed.
+- The `--by` value is an operator-supplied audit label, not verified identity or authentication.
 - No privilege escalation is implemented.
 - No network-facing MCP authentication layer is implemented; do not expose the stdio server through an unauthenticated bridge.
 - No independent penetration test or security audit has been performed.
