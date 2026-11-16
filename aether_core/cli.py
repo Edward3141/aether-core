@@ -30,6 +30,9 @@ def build_parser():
     ask = sub.add_parser("ask", help="Ask the configured default AI model")
     ask.add_argument("message", nargs="+")
 
+    plan = sub.add_parser("plan", help="Generate a non-executable remediation proposal")
+    plan.add_argument("analysis", nargs="+", help="Analysis text to turn into a proposal")
+
     for decision in ("approve", "reject"):
         action = sub.add_parser(decision, help=f"Record a human {decision} decision for a proposal")
         action.add_argument("proposal_id")
@@ -53,6 +56,18 @@ async def run(args):
         report, analysis = await Orchestrator(db).audit()
         console.print(f"[green]Audit saved:[/] {report.id}")
         console.print(Panel(analysis, title="ANALYST"))
+        return 0
+
+    if args.command == "plan":
+        proposal, review = await Orchestrator(db).plan(" ".join(args.analysis))
+        console.print(Panel(
+            f"[bold]{proposal.title}[/]\nID: {proposal.id}\n"
+            f"SHA-256: {proposal.content_hash()}\nRisk: {proposal.risk.value}\n\n"
+            + "\\n".join(f"- {step}" for step in proposal.steps)
+            + "\\n\\nThis is a proposal only; no action was executed.",
+            title="FIXER — Remediation proposal",
+        ))
+        console.print(review["message"])
         return 0
 
     if args.command == "ask":
