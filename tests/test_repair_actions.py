@@ -270,3 +270,27 @@ def test_directory_action_fails_closed_without_safe_descriptor_apis(tmp_path):
     with pytest.raises(PermissionError, match="race-safe directory APIs"):
         _ensure_directory(EnsureDirectoryParams(relative_path="blocked"), tmp_path)
     assert not (tmp_path / "blocked").exists()
+
+
+
+def test_plan_rejects_replaced_target_directory(tmp_path, monkeypatch):
+    db = Database(tmp_path / "state.db")
+    root = tmp_path / "approved-root"
+    root.mkdir()
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "cache"}, root)
+    moved = tmp_path / "original-root"
+    root.rename(moved)
+    root.mkdir()
+
+    from types import SimpleNamespace
+    monkeypatch.setattr("aether_core.repair_actions.sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt: f"AUTHORIZE {plan['id']} {plan['sha256']}",
+    )
+    with pytest.raises(PermissionError, match="target"):
+        Executor(db).execute_after_human_prompt(
+            plan["id"], plan["sha256"], "human", root
+        )
+    assert not (root / "cache").exists()
+    assert db.get_action_plan(plan["id"])["status"] == "pending"
