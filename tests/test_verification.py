@@ -35,6 +35,12 @@ def test_verifier_rejects_symlink_components(tmp_path):
         )
 
 
+def test_verifier_rejects_traversal_and_absolute_paths(tmp_path):
+    for path in ("../outside", "/tmp/outside", "a/../../outside"):
+        with pytest.raises(ValueError, match="unsafe relative path"):
+            PostRepairVerifier().verify("ensure_directory", {"relative_path": path}, tmp_path)
+
+
 def test_verifier_fails_closed_for_unregistered_actions(tmp_path):
     with pytest.raises(ValueError, match="No independent post-repair verifier"):
         PostRepairVerifier().verify("unknown", {}, tmp_path)

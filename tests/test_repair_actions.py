@@ -294,3 +294,30 @@ def test_plan_rejects_replaced_target_directory(tmp_path, monkeypatch):
         )
     assert not (root / "cache").exists()
     assert db.get_action_plan(plan["id"])["status"] == "pending"
+
+
+
+def test_failed_multicomponent_creation_rolls_back_new_empty_directories(tmp_path, monkeypatch):
+    if not _supports_race_safe_directory_creation():
+        pytest.skip("Descriptor-relative directory creation is unavailable.")
+    db = Database(tmp_path / "test.db")
+    (tmp_path / "blocker").write_text("not a directory", encoding="utf-8")
+    plan = create_action_plan(
+        db, "ensure_directory",
+        {"relative_path": "new-parent/blocker/child"}, tmp_path,
+    )
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        "aether_core.repair_actions.sys.stdin",
+        SimpleNamespace(isatty=lambda: True),
+    )
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt: f"AUTHORIZE {plan['id']} {plan['sha256']}",
+    )
+    with pytest.raises(PermissionError, match="not a directory"):
+        Executor(db).execute_after_human_prompt(
+            plan["id"], plan["sha256"], "human", tmp_path
+        )
+    assert not (tmp_path / "new-parent").exists()
+    assert db.get_action_plan(plan["id"])["status"] == "failed"

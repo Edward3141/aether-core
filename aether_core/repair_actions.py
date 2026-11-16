@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import stat
 import sys
 import uuid
 from collections.abc import Callable
@@ -72,11 +73,7 @@ def _supports_race_safe_directory_creation() -> bool:
 def _ensure_directory(
     params: EnsureDirectoryParams, root: Path, expected_target_identity: str | None = None
 ) -> ActionResult:
-    """Create each path component relative to a pinned directory descriptor.
-
-    Fail closed on platforms without openat-style directory and no-follow support.
-    This avoids path re-resolution races and symlink/reparse-point traversal.
-    """
+    """Create directories using pinned descriptors and roll back our empty directories on failure."""
     if not _supports_race_safe_directory_creation():
         raise PermissionError(
             "This platform does not provide the required race-safe directory APIs; "
@@ -88,46 +85,92 @@ def _ensure_directory(
         raise ValueError("Target root must be a directory.")
 
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    root_parts = canonical_root.parts
-    descriptor = os.open(root_parts[0], flags)
+    descriptors: list[int] = []
+    created: list[tuple[int, str, int, int]] = []
     try:
-        # Pin every root component without following symlinks, not just the leaf.
+        # Pin every component of the approved root from the filesystem anchor.
+        root_parts = canonical_root.parts
+        descriptors.append(os.open(root_parts[0], flags))
         for root_part in root_parts[1:]:
-            child = os.open(root_part, flags, dir_fd=descriptor)
-            os.close(descriptor)
-            descriptor = child
+            try:
+                child = os.open(root_part, flags, dir_fd=descriptors[-1])
+            except OSError as exc:
+                if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                    raise PermissionError("Approved root contains a symlink or non-directory.") from exc
+                raise
+            descriptors.append(child)
 
         if expected_target_identity is not None:
-            opened_identity = _identity_from_stat(canonical_root, os.fstat(descriptor))
+            opened_identity = _identity_from_stat(canonical_root, os.fstat(descriptors[-1]))
             if opened_identity != expected_target_identity:
                 raise PermissionError(
                     "Approved target changed before the filesystem operation began."
                 )
 
         for part in params.relative_path.split("/"):
+            parent = descriptors[-1]
+            created_here = False
             try:
-                os.mkdir(part, mode=0o755, dir_fd=descriptor)
+                os.mkdir(part, mode=0o755, dir_fd=parent)
+                created_here = True
             except FileExistsError:
-                # Existing entries are accepted only if they can be opened as a
-                # real directory without following a symlink.
                 pass
+
             try:
-                child = os.open(part, flags, dir_fd=descriptor)
+                child = os.open(part, flags, dir_fd=parent)
             except OSError as exc:
                 if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
                     raise PermissionError(
-                        "Symlink traversal or non-directory path component is not allowed."
+                        "Path component is a symlink or is not a directory."
                     ) from exc
                 raise
-            os.close(descriptor)
-            descriptor = child
+
+            if created_here:
+                # Confirm the opened directory is the exact inode created at this name.
+                named = os.stat(part, dir_fd=parent, follow_symlinks=False)
+                opened = os.fstat(child)
+                if (
+                    not stat.S_ISDIR(named.st_mode)
+                    or (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)
+                ):
+                    os.close(child)
+                    raise PermissionError(
+                        "New directory was replaced during creation; refusing to continue."
+                    )
+                created.append((parent, part, opened.st_dev, opened.st_ino))
+            descriptors.append(child)
+    except Exception as original:
+        rollback_errors: list[str] = []
+        for parent, part, device, inode in reversed(created):
+            try:
+                current = os.stat(part, dir_fd=parent, follow_symlinks=False)
+                if (
+                    not stat.S_ISDIR(current.st_mode)
+                    or (current.st_dev, current.st_ino) != (device, inode)
+                ):
+                    raise OSError("Directory identity changed; refusing unsafe rollback.")
+                os.rmdir(part, dir_fd=parent)
+            except FileNotFoundError:
+                continue
+            except OSError as rollback_error:
+                rollback_errors.append(f"{part}: {type(rollback_error).__name__}")
+        if rollback_errors:
+            raise RuntimeError(
+                "Directory action failed and rollback was incomplete: "
+                + "; ".join(rollback_errors)
+            ) from original
+        raise
     finally:
-        os.close(descriptor)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
 
     return ActionResult(
         action_id="ensure_directory",
         status="executed",
-        detail=f"Directory creation completed safely beneath the approved root: {params.relative_path}",
+        detail=(
+            "Directory creation completed using pinned, no-follow filesystem descriptors: "
+            f"{params.relative_path}"
+        ),
     )
 
 _HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
