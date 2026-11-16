@@ -142,7 +142,7 @@ The MCP interface does not execute system repairs. It can collect diagnostics an
 
 ## Roadmap
 
-More allow-listed actions, full backup/rollback and postcondition verification, durable execution evidence, trusted graphical human approval, failure-injection coverage and independent security review. Roadmap items are not implemented features.
+More allow-listed actions, verified backup/restore and rollback for future state-changing operations, complete multi-agent post-repair verification (fresh SCOUT evidence, ANALYST comparison and AUDITOR release review), durable execution evidence, trusted graphical human approval, broader failure-injection coverage and independent security review. Roadmap items are not implemented features.
 
 ## License
 

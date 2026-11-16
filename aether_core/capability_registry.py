@@ -89,7 +89,7 @@ _CATALOG = (
     Capability("configuration.plan", "configuration", "Prepare a typed, scoped configuration change",
                ("FIXER", "AUDITOR", "EXECUTOR"), ("linux", "macos", "windows", "other"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
-               "proposal_only", notes="FIXER proposes; AUDITOR reviews; EJECUTOR needs per-action human approval."),
+               "proposal_only", notes="FIXER proposes; AUDITOR reviews; EXECUTOR needs per-action human approval."),
     Capability("backup.plan", "recovery", "Plan and verify a backup before an approved change",
                ("FIXER", "AUDITOR", "EXECUTOR"), ("linux", "macos", "windows", "other"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
