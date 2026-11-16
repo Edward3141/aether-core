@@ -30,7 +30,7 @@ jobs:
       - name: Run Ruff correctness checks
         run: ruff check . --select E4,E7,E9,F
       - name: Audit installed dependencies
-        run: pip-audit --strict --skip-editable
+        run: pip-audit . --strict
       - name: Scan Python code with Bandit
         run: bandit -r aether_core -ll -iii
 
