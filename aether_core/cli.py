@@ -28,6 +28,8 @@ def build_parser():
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("doctor", help="Run fixed read-only local diagnostics")
+    capabilities = sub.add_parser("capabilities", help="List cross-platform capabilities and role permissions")
+    capabilities.add_argument("--agent", choices=("SCOUT", "ANALYST", "FIXER", "AUDITOR", "EXECUTOR"))
     sub.add_parser("sandbox-check", help="Run a fixed diagnostic in the restricted Docker sandbox")
     sub.add_parser("audit", help="Run all four agents and update integrated intelligence services")
     sub.add_parser("status", help="Show integrated system snapshot, agent metrics and knowledge ledger")
@@ -121,8 +123,13 @@ async def run(args):
             console.print(Text(f"{finding.risk.value} {finding.title}: {finding.detail}"))
         return 0
 
-    if args.command in {"status", "report", "skills", "skill"}:
+    if args.command in {"status", "report", "skills", "skill", "capabilities"}:
         workflow = Orchestrator(db)
+        if args.command == "capabilities":
+            catalog = (workflow.capabilities.list_for_role(args.agent)
+                       if args.agent else workflow.capabilities.summary())
+            console.print(Text(json.dumps(catalog, ensure_ascii=False, indent=2, default=str)))
+            return 0
         if args.command == "skills":
             catalog = workflow.skills.for_agent(args.agent) if args.agent else workflow.skills.list()
             console.print(Text(json.dumps(catalog, ensure_ascii=False, indent=2)))
