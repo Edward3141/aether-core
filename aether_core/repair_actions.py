@@ -92,11 +92,12 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     plan_id = str(uuid.uuid4())
     created = datetime.now(UTC)
+    expires = created + timedelta(minutes=ttl_minutes)
     db.create_action_plan(plan_id, action_id,
         json.dumps(validated.model_dump(mode="json"), sort_keys=True),
-        str(root), digest, created.isoformat())
+        str(root), identity, digest, created.isoformat(), expires.isoformat())
     return {"id": plan_id, **payload, "sha256": digest,
-            "expires_at": (created + timedelta(minutes=ttl_minutes)).isoformat()}
+            "expires_at": expires.isoformat()}
 
 
 def approve_and_execute(db: Database, plan_id: str, digest: str,
@@ -109,12 +110,10 @@ def approve_and_execute(db: Database, plan_id: str, digest: str,
     plan = db.get_action_plan(plan_id)
     if plan is None:
         raise ValueError("Action plan not found.")
-    expires = datetime.fromisoformat(plan["created_at"]) + timedelta(minutes=10)
+    expires = datetime.fromisoformat(plan["expires_at"])
     if now >= expires:
         raise PermissionError("Action plan expired; create and review a new plan.")
-    if str(root) != plan["target_root"] or target_identity(root) != _identity_from_plan(
-        plan["action_id"], plan["params_json"], root
-    ):
+    if str(root) != plan["target_root"] or target_identity(root) != plan["target_identity"]:
         raise PermissionError("Approved target does not match the current target.")
     claim = db.consume_action_plan(plan_id, digest, approved_by,
                                    expires.isoformat(), now.isoformat())
@@ -132,7 +131,3 @@ def approve_and_execute(db: Database, plan_id: str, digest: str,
             json.dumps({"error_type": type(exc).__name__, "detail": str(exc)[:500]}))
         raise
 
-
-def _identity_from_plan(action_id: str, params_json: str, root: Path) -> str:
-    # Recomputed from the same host and canonical target; plan digest independently binds parameters.
-    return target_identity(root)
