@@ -30,7 +30,7 @@ def test_fixer_can_propose_but_not_execute():
     fixer = {x["capability_id"]: x for x in registry.list_for_role("FIXER", "Windows")}
     assert fixer["configuration.plan"]["access"] == "proposal_only"
     assert fixer["backup.plan"]["access"] == "proposal_only"
-    assert fixer["repair.execute"] if "repair.execute" in fixer else True
+    assert "repair.execute" not in fixer
 
 
 def test_unknown_role_and_capability_fail_closed():
