@@ -47,7 +47,11 @@ def target_identity(root: Path) -> str:
     canonical = root.resolve(strict=True)
     if not canonical.is_dir():
         raise ValueError("Target root must be an existing directory.")
-    material = f"{platform.node()}|{os.name}|{canonical}"
+    metadata = canonical.stat()
+    material = (
+        f"{platform.node()}|{os.name}|{canonical}|"
+        f"{metadata.st_dev}|{metadata.st_ino}"
+    )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -79,8 +83,15 @@ def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult
         raise ValueError("Target root must be a directory.")
 
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    descriptor = os.open(canonical_root, flags)
+    root_parts = canonical_root.parts
+    descriptor = os.open(root_parts[0], flags)
     try:
+        # Pin every root component without following symlinks, not just the leaf.
+        for root_part in root_parts[1:]:
+            child = os.open(root_part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+
         for part in params.relative_path.split("/"):
             try:
                 os.mkdir(part, mode=0o755, dir_fd=descriptor)
