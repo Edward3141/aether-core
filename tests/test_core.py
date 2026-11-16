@@ -216,3 +216,60 @@ async def test_auditor_fails_closed_when_model_unavailable(monkeypatch):
     review = await agents.Auditor().review(proposal)
     assert review["execution_allowed"] is False
     assert "manual review is required" in review["advisory"]
+
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_runs_four_agents_and_persists_results(tmp_path, monkeypatch):
+    from aether_core import orchestrator
+    from aether_core.models import AuditReport, Finding, Risk
+
+    events = []
+    report = AuditReport(
+        platform="test-platform",
+        findings=[Finding(title="Test fact", detail="Observed", risk=Risk.INFO)],
+    )
+    proposal = RemediationProposal(
+        title="Safe review", rationale="Evidence reviewed", steps=["Review manually"]
+    )
+
+    async def scout_inspect(self):
+        events.append("SCOUT")
+        return report
+
+    async def analyst_analyze(self, value):
+        events.append("ANALYST")
+        assert value.id == report.id
+        return "Evidence-based analysis"
+
+    async def fixer_propose(self, analysis):
+        events.append("FIXER")
+        assert analysis == "Evidence-based analysis"
+        return proposal
+
+    async def auditor_review(self, value):
+        events.append("AUDITOR")
+        assert value.id == proposal.id
+        return {
+            "proposal_id": value.id,
+            "sha256": value.content_hash(),
+            "execution_allowed": False,
+            "human_approval_required": True,
+            "advisory": "Manual review",
+            "message": "Human review required.",
+        }
+
+    monkeypatch.setattr(orchestrator.Scout, "inspect", scout_inspect)
+    monkeypatch.setattr(orchestrator.Analyst, "analyze", analyst_analyze)
+    monkeypatch.setattr(orchestrator.Fixer, "propose", fixer_propose)
+    monkeypatch.setattr(orchestrator.Auditor, "review", auditor_review)
+
+    db = Database(tmp_path / "workflow.db")
+    workflow = orchestrator.Orchestrator(db)
+    saved_report, analysis = await workflow.audit()
+    saved_proposal, review = await workflow.plan(analysis)
+
+    assert events == ["SCOUT", "ANALYST", "FIXER", "AUDITOR"]
+    assert db.get_audit(saved_report.id) is not None
+    assert db.get_proposal(saved_proposal.id) is not None
+    assert review["execution_allowed"] is False
