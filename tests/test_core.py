@@ -96,3 +96,16 @@ def test_agent_model_configuration_can_override_provider(monkeypatch):
     assert settings.model == "openai/custom"
     assert settings.api_base == "https://api.example.test"
     assert settings.api_key == "test-only-secret"
+
+
+def test_cli_approval_requires_hash_and_actor():
+    from aether_core.cli import build_parser
+
+    args = build_parser().parse_args([
+        "approve", "proposal-123", "--hash", "a" * 64, "--by", "human"
+    ])
+    assert args.command == "approve"
+    assert args.proposal_id == "proposal-123"
+    assert args.proposal_hash == "a" * 64
+    assert args.approved_by == "human"
+    assert args.minutes == 15
