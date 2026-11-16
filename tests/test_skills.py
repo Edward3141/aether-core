@@ -1,0 +1,72 @@
+"""Tests for the allow-listed skill registry."""
+import pytest
+
+from aether_core.extended.knowledge import KnowledgeStore
+from aether_core.extended.quality import AgentScorecard
+from aether_core.skills import SkillRegistry, SkillSpec, build_builtin_registry
+
+
+def make_registry(tmp_path):
+    return build_builtin_registry(
+        KnowledgeStore(tmp_path / "knowledge.sqlite3"),
+        AgentScorecard(tmp_path / "metrics.sqlite3"),
+    )
+
+
+def test_builtin_skills_are_registered_and_sorted(tmp_path):
+    registry = make_registry(tmp_path)
+    names = [item["name"] for item in registry.list()]
+    assert names == sorted(names)
+    assert {"system.snapshot", "knowledge.search", "knowledge.stats",
+            "report.generate"} <= set(names)
+
+
+def test_system_snapshot_is_read_only_and_usable(tmp_path):
+    result = make_registry(tmp_path).execute(
+        "system.snapshot", caller="SCOUT"
+    )
+    assert result["cpu_count"] >= 1
+    assert result["disk_total_bytes"] > 0
+
+
+def test_knowledge_search_never_returns_unverified(tmp_path):
+    registry = make_registry(tmp_path)
+    knowledge = KnowledgeStore(tmp_path / "knowledge.sqlite3")
+    unverified = knowledge.add("network", "Unconfirmed observation", source="SCOUT")
+    verified = knowledge.add("network", "Confirmed observation", source="human")
+    assert knowledge.verify(verified, evidence={"ticket": "case-123"})
+    result = registry.execute(
+        "knowledge.search", caller="ANALYST", arguments={"topic": "network"}
+    )
+    assert [item["id"] for item in result] == [verified]
+    assert unverified not in [item["id"] for item in result]
+
+
+def test_skill_rejects_unknown_names_and_callers(tmp_path):
+    registry = make_registry(tmp_path)
+    with pytest.raises(ValueError, match="not registered"):
+        registry.execute("shell.run", caller="HUMAN")
+    with pytest.raises(PermissionError):
+        registry.execute("knowledge.search", caller="SCOUT", arguments={"topic": ""})
+
+
+def test_skill_rejects_extra_and_invalid_arguments(tmp_path):
+    registry = make_registry(tmp_path)
+    with pytest.raises(ValueError, match="unsupported"):
+        registry.execute(
+            "knowledge.search", caller="ANALYST",
+            arguments={"topic": "x", "sql": "DROP TABLE knowledge"},
+        )
+    with pytest.raises(ValueError, match="limit"):
+        registry.execute(
+            "knowledge.search", caller="ANALYST",
+            arguments={"topic": "x", "limit": 1000},
+        )
+
+
+def test_registry_rejects_duplicate_skills():
+    registry = SkillRegistry()
+    skill = SkillSpec("demo", "Demo", ("HUMAN",), lambda args: None)
+    registry.register(skill)
+    with pytest.raises(ValueError, match="unique"):
+        registry.register(skill)
