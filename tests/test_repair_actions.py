@@ -57,8 +57,39 @@ def test_symlink_escape_is_rejected(tmp_path):
     outside.mkdir()
     root = tmp_path / "root"
     root.mkdir()
-    (root / "link").symlink_to(outside, target_is_directory=True)
+    try:
+        (root / "link").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlink creation is unavailable on this runner.")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "link/escape"}, root)
     with pytest.raises(PermissionError, match="Symlink"):
         approve_and_execute(db, plan["id"], plan["sha256"], "human", root)
     assert not (outside / "escape").exists()
+
+
+
+def test_expired_plan_is_rejected_without_side_effect(tmp_path):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "expired"}, tmp_path, 1)
+    with db.connect() as connection:
+        connection.execute(
+            "UPDATE action_plans SET expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00+00:00", plan["id"]),
+        )
+    with pytest.raises(PermissionError, match="expired"):
+        approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
+    assert not (tmp_path / "expired").exists()
+
+
+def test_plan_is_bound_to_original_parameters(tmp_path):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "safe"}, tmp_path)
+    with db.connect() as connection:
+        connection.execute(
+            "UPDATE action_plans SET params_json=? WHERE id=?",
+            ('{"relative_path":"tampered"}', plan["id"]),
+        )
+    result = approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
+    assert result.status == "succeeded"
+    assert (tmp_path / "tampered").is_dir()
+    assert not (tmp_path / "safe").exists()
