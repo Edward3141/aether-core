@@ -17,10 +17,14 @@ AETHER CORE is organized as **four intelligence agents plus one supervised execu
 The registry maps capabilities to documented command references for Linux, macOS and
 Windows. It detects the current platform and filters the catalog accordingly. Every
 entry exposes `implementation_status`; a command reference is not proof of an adapter.
-The read-only adapters currently collect system identity, process count, memory,
-mounted storage, network-interface state and uptime through psutil. Windows service
-enumeration is also implemented. Linux/macOS service enumeration, logs, package
-inventory, filesystem auditing and security-posture probes remain metadata-only.
+The read-only adapters collect system identity, process count, memory, mounted storage,
+network-interface state and uptime through psutil. Fixed native probes add Linux
+systemd failed-service counts, dpkg/rpm package counts, bounded journal error counts
+and firewall state; macOS launchd inventory, pkgutil receipt counts, bounded unified-log
+error counts and application-firewall state; and Windows firewall state alongside
+psutil service inventory. Windows package and event-log collection remain unavailable.
+Filesystem coverage is limited to home-directory metadata, not recursive auditing.
+Native probes use fixed argument vectors, no shell, short timeouts and secret redaction.
 
 ## Security invariants
 
