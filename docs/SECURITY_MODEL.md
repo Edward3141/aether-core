@@ -21,6 +21,8 @@ An approval record is not an execution token. It does not start a process, autho
 ## Current limitations
 
 - The Docker sandbox currently runs one fixed, read-only Python version check only; the separate repair Executor is limited to the typed `ensure_directory` handler and is not a general-purpose command runner.
+- The current `ensure_directory` mutation is enabled only where descriptor-relative `O_NOFOLLOW` APIs are available (Linux/macOS); Windows and unsupported platforms fail closed.
+- The `--by` value is an operator-supplied audit label, not verified identity or authentication.
 - No privilege escalation is implemented.
 - No network-facing MCP authentication layer is implemented; do not expose the stdio server through an unauthenticated bridge.
 - No independent penetration test or security audit has been performed.
