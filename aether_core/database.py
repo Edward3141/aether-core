@@ -28,7 +28,7 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_approvals_proposal_id ON approvals(proposal_id);
                 CREATE TABLE IF NOT EXISTS action_plans (
                     id TEXT PRIMARY KEY, action_id TEXT NOT NULL, params_json TEXT NOT NULL,
-                    target_root TEXT NOT NULL, digest TEXT NOT NULL, created_at TEXT NOT NULL,
+                    target_root TEXT NOT NULL, target_identity TEXT NOT NULL, digest TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending', approved_by TEXT,
                     expires_at TEXT, consumed_at TEXT, result_json TEXT
                 );
@@ -40,19 +40,20 @@ class Database:
         return sqlite3.connect(self.path, timeout=10)
 
     def create_action_plan(self, plan_id: str, action_id: str, params_json: str,
-                           target_root: str, digest: str, created_at: str) -> None:
+                           target_root: str, target_identity: str, digest: str,
+                           created_at: str, expires_at: str) -> None:
         with self.connect() as db:
             db.execute(
                 """INSERT INTO action_plans
-                   (id, action_id, params_json, target_root, digest, created_at, status)
-                   VALUES (?, ?, ?, ?, ?, ?, 'pending')""",
-                (plan_id, action_id, params_json, target_root, digest, created_at),
+                   (id, action_id, params_json, target_root, target_identity, digest, created_at, expires_at, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                (plan_id, action_id, params_json, target_root, target_identity, digest, created_at, expires_at),
             )
 
     def get_action_plan(self, plan_id: str) -> dict | None:
         with self.connect() as db:
             row = db.execute(
-                """SELECT id, action_id, params_json, target_root, digest,
+                """SELECT id, action_id, params_json, target_root, target_identity, digest,
                           created_at, status, approved_by, expires_at, consumed_at, result_json
                    FROM action_plans WHERE id=?""", (plan_id,)
             ).fetchone()
@@ -69,16 +70,18 @@ class Database:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
-                """SELECT action_id, params_json, target_root, digest, status
+                """SELECT action_id, params_json, target_root, target_identity, digest, status, expires_at
                    FROM action_plans WHERE id=?""", (plan_id,)
             ).fetchone()
             if row is None:
                 raise ValueError("Action plan not found.")
-            action_id, params_json, target_root, stored_digest, status = row
+            action_id, params_json, target_root, stored_identity, stored_digest, status, stored_expiry = row
             if status != "pending":
                 raise PermissionError("Action plan is not pending; approvals cannot be replayed.")
             if stored_digest != digest:
                 raise ValueError("Action plan digest mismatch.")
+            if stored_expiry <= consumed_at:
+                raise PermissionError("Action plan expired; create and review a new plan.")
             db.execute(
                 """UPDATE action_plans SET status='consumed', approved_by=?,
                    expires_at=?, consumed_at=? WHERE id=? AND status='pending'""",
@@ -87,7 +90,7 @@ class Database:
             if db.total_changes != 1:
                 raise PermissionError("Action plan could not be consumed exactly once.")
             return {"action_id": action_id, "params_json": params_json,
-                    "target_root": target_root, "digest": stored_digest}
+                    "target_root": target_root, "target_identity": stored_identity, "digest": stored_digest}
 
     def finish_action_plan(self, plan_id: str, status: str, result_json: str) -> None:
         if status not in {"succeeded", "failed"}:
