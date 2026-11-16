@@ -122,6 +122,8 @@ def approve_and_execute(db: Database, plan_id: str, digest: str,
     plan = db.get_action_plan(plan_id)
     if plan is None:
         raise ValueError("Action plan not found.")
+    if digest != plan["digest"]:
+        raise ValueError("Action plan digest mismatch.")
     expires = datetime.fromisoformat(plan["expires_at"])
     if now >= expires:
         raise PermissionError("Action plan expired; create and review a new plan.")
