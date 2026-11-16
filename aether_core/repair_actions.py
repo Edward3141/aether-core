@@ -224,7 +224,14 @@ def _create_file(
             if opened_identity != expected_target_identity:
                 raise PermissionError("Approved target changed before file creation.")
         for part in params.relative_path.split("/")[:-1]:
-            descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
+            try:
+                descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
+            except OSError as exc:
+                if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                    raise PermissionError(
+                        "Symlink traversal or a non-directory parent is not allowed."
+                    ) from exc
+                raise
         parent = descriptors[-1]
         file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
         file_descriptor = os.open(filename, file_flags, 0o600, dir_fd=parent)
