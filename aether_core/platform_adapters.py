@@ -17,16 +17,16 @@ from .models import Finding, Risk
 _TIMEOUT_SECONDS = 5
 _MAX_OUTPUT = 64_000
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\s*[:=]\s*)\S+"),
-    re.compile(r"(?i)(authorization\s*:\s*bearer\s+)(\S+)"),
-    re.compile(r"(?i)(https?://)([^/@\s]+:[^/@\s]+@)"),
+    (re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\\s*[:=]\\s*)\\S+"), r"\\1\\2[REDACTED]"),
+    (re.compile(r"(?i)(authorization\\s*:\\s*bearer\\s+)(\\S+)"), r"\\1[REDACTED]"),
+    (re.compile(r"(?i)(https?://)([^/@\\s]+:[^/@\\s]+@)"), r"\\1[REDACTED]"),
 )
 
 
 def _redact(value: str) -> str:
     value = value[:_MAX_OUTPUT]
-    for pattern in _SECRET_PATTERNS:
-        value = pattern.sub(r"\1\2[REDACTED]", value)
+    for pattern, replacement in _SECRET_PATTERNS:
+        value = pattern.sub(replacement, value)
     return value
 
 
