@@ -8,21 +8,25 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 **Created by Edward Tejada** · MIT License
 
 ## Four agents
+
 - **SCOUT** — fixed, read-only system diagnostics.
 - **ANALYST** — evidence review, uncertainty and risk classification.
 - **FIXER** — remediation proposals with backup and rollback guidance; never executes repairs.
 - **AUDITOR** — proposal hash review and human oversight records.
 
 ## Current capabilities
+
 - Python 3.11+ CLI and Pydantic data contracts.
-- LiteLLM model adapter.
-- SQLite audit, proposal and approval-record persistence.
-- Local stdio MCP server with read-only diagnostic tools.
+- LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
+- SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
+- Local stdio MCP server with read-only diagnostics, audit lookup and proposal lookup.
 - Fixed diagnostics; AI-generated commands are never executed.
-- GitHub Actions matrix for Linux, Windows and macOS.
+- Explicit CLI confirmation before recording an approval or rejection.
+- GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
 
 ## Safety limitations
-This is an early development release, not an autonomous repair product. No repair executor or Docker sandbox is included. Approval records are audit evidence, not authorization to run arbitrary code. MCP tools are local and read-only. This project has not undergone an independent security audit.
+
+This is an early development release, not an autonomous repair product. No repair executor or Docker sandbox is included. Approval records are audit evidence only; they do not authorize or trigger code execution. MCP tools are read-only. This project has not undergone an independent security audit.
 
 ## Install
 
@@ -40,21 +44,44 @@ py -3 -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-Copy .env.example to .env and configure AETHER_MODEL, AETHER_API_BASE and AETHER_API_KEY. Never commit secrets. The default model is ollama/qwen2.5:7b; ensure it is available locally.
+Copy `.env.example` to `.env`. Configure the shared `AETHER_MODEL`, `AETHER_API_BASE`, and `AETHER_API_KEY`, or use per-agent variables such as `AETHER_ANALYST_MODEL`, `AETHER_ANALYST_API_BASE`, and `AETHER_ANALYST_API_KEY`. The same pattern is supported for SCOUT, FIXER and AUDITOR. Never commit secrets.
+
+The default model is `ollama/qwen2.5:7b`; ensure it is available locally if using the default configuration.
 
 ## Commands
+
 ```bash
 aether-core doctor
 aether-core ask "Explain this system diagnostic"
 aether-core audit
-aether-core-mcp
+aether-core --help
 pytest
-ruff check .
+ruff check . --select E4,E7,E9,F
 ```
 
-MCP tools: auditar_sistema and consultar_auditoria. Do not expose an unauthenticated MCP server to a network.
+To record a human decision for a proposal, first obtain its exact ID and SHA-256 from the stored proposal. Then run:
+
+```bash
+aether-core approve PROPOSAL_ID --hash SHA256 --by "Your name" --minutes 15
+aether-core reject PROPOSAL_ID --hash SHA256 --by "Your name"
+```
+
+The CLI displays the proposal and requires typing the exact confirmation phrase. This records a time-limited decision only; it does not execute a repair. A decision is bound to the exact proposal hash.
+
+## MCP
+
+Run `aether-core-mcp` for a local stdio MCP server. Tools:
+
+- `auditar_sistema`
+- `consultar_auditoria`
+- `consultar_propuesta`
+
+The MCP interface is read-only. Do not expose an unauthenticated MCP server to a network.
 
 ## Roadmap
-Per-agent model settings, provider capability detection, expanded allow-listed diagnostics, reviewed Docker isolation, richer approval UX, rollback verification and integration tests. Roadmap items are not implemented features.
 
-MIT License — see LICENSE.
+Reviewed Docker isolation, broader allow-listed diagnostics, provider capability detection, per-agent integration tests, richer approval UX, rollback verification and security review. Roadmap items are not implemented features.
+
+## License
+
+MIT License — see [LICENSE](LICENSE).
