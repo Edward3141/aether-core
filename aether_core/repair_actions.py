@@ -283,6 +283,12 @@ _HANDLERS = {
     "ensure_directory": (EnsureDirectoryParams, _ensure_directory),
     "create_empty_file": (CreateEmptyFileParams, _create_file),
 }
+# Increment a handler version whenever its behavior, side effects or verification
+# contract changes. Pending plans from older versions must never execute.
+_HANDLER_VERSIONS = {
+    "ensure_directory": 1,
+    "create_empty_file": 1,
+}
 
 
 def registered_action_ids() -> tuple[str, ...]:
@@ -290,9 +296,12 @@ def registered_action_ids() -> tuple[str, ...]:
     return tuple(sorted(_HANDLERS))
 
 
-def _plan_digest(action_id: str, parameters: dict, root: Path, identity: str) -> str:
+def _plan_digest(
+    action_id: str, handler_version: int, parameters: dict, root: Path, identity: str
+) -> str:
     payload = {
         "action_id": action_id,
+        "handler_version": handler_version,
         "parameters": parameters,
         "target_identity": identity,
         "target_root": str(root),
@@ -314,18 +323,26 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
     validated = schema.model_validate(parameters)
     identity = target_identity(root)
     normalized_parameters = validated.model_dump(mode="json")
+    handler_version = _HANDLER_VERSIONS[action_id]
     payload = {
         "action_id": action_id,
+        "handler_version": handler_version,
         "parameters": normalized_parameters,
         "target_identity": identity,
         "target_root": str(root),
     }
-    digest = _plan_digest(action_id, normalized_parameters, root, identity)
+    digest = _plan_digest(
+        action_id, handler_version, normalized_parameters, root, identity
+    )
     plan_id = str(uuid.uuid4())
     created = datetime.now(UTC)
     expires = created + timedelta(minutes=ttl_minutes)
+    stored_contract = {
+        "handler_version": handler_version,
+        "parameters": normalized_parameters,
+    }
     db.create_action_plan(plan_id, action_id,
-        json.dumps(validated.model_dump(mode="json"), sort_keys=True),
+        json.dumps(stored_contract, sort_keys=True),
         str(root), identity, digest, created.isoformat(), expires.isoformat())
     return {"id": plan_id, **payload, "sha256": digest,
             "expires_at": expires.isoformat()}
@@ -350,7 +367,8 @@ def _execute_approved_plan(
     review = {
         "plan_id": plan["id"],
         "action": plan["action_id"],
-        "parameters": json.loads(plan["params_json"]),
+        "handler_version": _HANDLER_VERSIONS.get(plan["action_id"]),
+        "parameters": json.loads(plan["params_json"]).get("parameters", {}),
         "target_root": plan["target_root"],
         "target_identity": plan["target_identity"],
         "sha256": plan["digest"],
@@ -389,10 +407,20 @@ def _execute_approved_plan(
         raise PermissionError("Action is no longer present in the local allow-list.")
     schema, _handler = _HANDLERS[action_id]
     try:
-        stored_parameters = schema.model_validate_json(plan["params_json"]).model_dump(mode="json")
+        stored_contract = json.loads(plan["params_json"])
+        handler_version = stored_contract["handler_version"]
+        if handler_version != _HANDLER_VERSIONS[action_id]:
+            raise ValueError("Registered handler version changed.")
+        stored_parameters = schema.model_validate(
+            stored_contract["parameters"]
+        ).model_dump(mode="json")
     except Exception as exc:
-        raise ValueError("Stored action parameters failed schema validation.") from exc
-    if _plan_digest(action_id, stored_parameters, root, plan["target_identity"]) != digest:
+        raise ValueError(
+            "Action plan integrity check failed; handler version or parameters changed."
+        ) from exc
+    if _plan_digest(
+        action_id, handler_version, stored_parameters, root, plan["target_identity"]
+    ) != digest:
         raise ValueError("Action plan integrity check failed; parameters or target were changed.")
 
     claim = db.consume_action_plan(
@@ -401,7 +429,10 @@ def _execute_approved_plan(
     action_id = claim["action_id"]
     schema, handler = _HANDLERS[action_id]
     try:
-        params = schema.model_validate_json(claim["params_json"])
+        consumed_contract = json.loads(claim["params_json"])
+        if consumed_contract.get("handler_version") != _HANDLER_VERSIONS[action_id]:
+            raise ValueError("Action handler version changed after authorization.")
+        params = schema.model_validate(consumed_contract["parameters"])
         result = handler(
             params, Path(claim["target_root"]), claim["target_identity"]
         )
