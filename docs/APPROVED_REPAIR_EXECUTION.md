@@ -2,10 +2,11 @@
 
 ## Implemented first execution slice
 
-AETHER CORE now supports one deliberately narrow, non-privileged operation:
-`ensure_directory`. It can create a directory below an existing, explicitly
-selected root. It cannot execute shell commands, scripts, arbitrary model text,
-or caller-supplied programs.
+AETHER CORE supports two deliberately narrow, non-privileged operations:
+`ensure_directory` creates directories below an existing, explicitly selected root;
+`create_empty_file` creates a new empty file below that root with mode 0600 and
+refuses to overwrite any existing path. Both fail closed on unsupported platforms.
+Neither action executes shell commands, scripts, arbitrary model text, or programs.
 
 ## Human authorization lifecycle
 
