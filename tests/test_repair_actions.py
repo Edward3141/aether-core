@@ -89,7 +89,7 @@ def test_plan_is_bound_to_original_parameters(tmp_path):
             "UPDATE action_plans SET params_json=? WHERE id=?",
             ('{"relative_path":"tampered"}', plan["id"]),
         )
-    result = approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
-    assert result.status == "succeeded"
-    assert (tmp_path / "tampered").is_dir()
+    with pytest.raises(ValueError, match="integrity check"):
+        approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
+    assert not (tmp_path / "tampered").exists()
     assert not (tmp_path / "safe").exists()
