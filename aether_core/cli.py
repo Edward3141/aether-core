@@ -90,26 +90,26 @@ async def run(args):
 
     if args.command == "execute-action":
         from pathlib import Path
-        from .repair_actions import approve_and_execute
-        plan = db.get_action_plan(args.plan_id)
-        if plan is None:
-            raise ValueError("Action plan not found.")
-        if plan["digest"] != args.plan_hash:
-            raise ValueError("Action plan hash mismatch.")
-        console.print(Panel(Text(json.dumps({
-            "plan_id": plan["id"], "action": plan["action_id"],
-            "parameters": json.loads(plan["params_json"]),
-            "target_root": plan["target_root"], "sha256": plan["digest"],
-            "status": plan["status"], "expires_at": plan["expires_at"],
-        }, ensure_ascii=False, indent=2)), title="EXACT ACTION REQUIRING HUMAN APPROVAL"))
-        expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
-        typed = console.input(f"Type exactly '{expected}' to authorize this one action: ")
-        if typed != expected:
-            console.print("[yellow]Cancelled. No action was executed.[/]")
+        from .repair_actions import Executor
+        executor = Executor(db)
+
+        def ask_human(review):
+            console.print(Panel(Text(json.dumps(review, ensure_ascii=False, indent=2)),
+                                title="EJECUTOR — Solicitud de autorización humana"))
+            expected = f"AUTHORIZE {review['plan_id']} {review['sha256']}"
+            return console.input(
+                f"El EJECUTOR solicita permiso para ESTE cambio. "
+                f"Escribe exactamente '{expected}' para autorizarlo: "
+            )
+
+        result = executor.execute_after_human_prompt(
+            args.plan_id, args.plan_hash, args.approved_by,
+            Path(args.root), ask_human,
+        )
+        if result is None:
+            console.print("[yellow]Autorización rechazada o cancelada. No se realizó ningún cambio.[/]")
             return 2
-        result = approve_and_execute(db, plan["id"], args.plan_hash,
-                                     args.approved_by, Path(args.root))
-        console.print(Panel(Text(result.detail), title=f"Execution: {result.status}"))
+        console.print(Panel(Text(result.detail), title=f"EJECUTOR — {result.status}"))
         return 0
 
     if args.command == "sandbox-check":
