@@ -32,7 +32,7 @@ ALL_ROLES = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "EXECUTOR")
 IMPLEMENTATION_STATUSES = {
     "implemented_read_only", "partial_read_only", "windows_only",
     "metadata_only", "proposal_contract_only", "not_implemented",
-    "partial_one_action",
+    "partial_one_action", "partial_typed_actions",
 }
 READ_ROLES = ("SCOUT", "ANALYST", "AUDITOR")
 FIX_ROLES = ("FIXER", "AUDITOR", "EXECUTOR")
@@ -103,7 +103,7 @@ _CATALOG = (
     Capability("repair.execute", "repair", "Execute a versioned typed repair action after human approval",
                ("EXECUTOR",), ("linux", "macos"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
-               "human_approval_required", implementation_status="partial_one_action", notes="Only ensure_directory is currently registered in repair_actions.py."),
+               "human_approval_required", implementation_status="partial_typed_actions", notes="ensure_directory and create_empty_file are registered; privileged, overwrite and destructive repairs remain disabled."),
 )
 
 
