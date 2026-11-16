@@ -109,3 +109,46 @@ def test_cli_approval_requires_hash_and_actor():
     assert args.proposal_hash == "a" * 64
     assert args.approved_by == "human"
     assert args.minutes == 15
+
+
+
+def test_sandbox_rejects_unknown_checks():
+    from aether_core.sandbox.docker_runner import run_check
+
+    with pytest.raises(ValueError, match="not allow-listed"):
+        run_check("arbitrary-shell-command")
+
+
+def test_sandbox_requires_docker(monkeypatch):
+    from aether_core.sandbox import docker_runner
+
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _: None)
+    with pytest.raises(docker_runner.SandboxUnavailable, match="Docker CLI"):
+        docker_runner.run_check("python-version")
+
+
+def test_sandbox_uses_isolated_fixed_command(monkeypatch):
+    from types import SimpleNamespace
+
+    from aether_core.sandbox import docker_runner
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout="Python 3.12", stderr="")
+
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(docker_runner.subprocess, "run", fake_run)
+    result = docker_runner.run_check("python-version")
+
+    assert result.exit_code == 0
+    assert "--network=none" in captured["command"]
+    assert "--read-only" in captured["command"]
+    assert "--cap-drop=ALL" in captured["command"]
+    assert "--security-opt=no-new-privileges:true" in captured["command"]
+    assert "--pull=never" in captured["command"]
+    assert "--privileged" not in captured["command"]
+    assert captured["kwargs"]["shell"] is False
+    assert captured["kwargs"]["timeout"] == 15
