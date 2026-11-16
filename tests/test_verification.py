@@ -38,3 +38,17 @@ def test_verifier_rejects_symlink_components(tmp_path):
 def test_verifier_fails_closed_for_unregistered_actions(tmp_path):
     with pytest.raises(ValueError, match="No independent post-repair verifier"):
         PostRepairVerifier().verify("unknown", {}, tmp_path)
+
+
+
+def test_verifier_rejects_symlink_even_when_target_stays_inside_root(tmp_path):
+    root = tmp_path / "root"
+    (root / "real").mkdir(parents=True)
+    try:
+        (root / "alias").symlink_to(root / "real", target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlink creation is unavailable on this runner.")
+    with pytest.raises(PermissionError, match="symlink"):
+        PostRepairVerifier().verify(
+            "ensure_directory", {"relative_path": "alias"}, root
+        )
