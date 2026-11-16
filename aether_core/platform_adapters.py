@@ -49,7 +49,7 @@ def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
             check=False,
             shell=False,
             close_fds=True,
-            env={"PATH": os.path.dirname(executable), "LC_ALL": "C", "LANG": "C"},
+            env={"PATH": os.defpath, "LC_ALL": "C", "LANG": "C"},
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
