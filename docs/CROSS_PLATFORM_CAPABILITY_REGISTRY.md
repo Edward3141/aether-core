@@ -33,8 +33,9 @@ Native probes use fixed argument vectors, no shell, short timeouts and secret re
 3. Diagnostic collection continues to use fixed application-owned probes.
 4. Repair execution remains separate in `repair_actions.py`, with typed parameters,
    an explicit allow-list and one human authorization per action. The current
-   `ensure_directory` handler uses descriptor-relative no-follow APIs and is enabled
-   only on supported POSIX systems; unsupported platforms fail closed.
+   `ensure_directory` and `create_empty_file` handlers use descriptor-relative
+   no-follow APIs and are enabled only on supported POSIX systems; unsupported
+   platforms fail closed.
 5. Unknown roles, capabilities, platforms and action IDs fail closed.
 6. Command references may differ by distribution, OS release, installed tools and policy.
    A future catalog update is expected; no honest project can promise every command
