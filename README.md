@@ -46,6 +46,10 @@ The intelligence services are now connected to the normal application workflow, 
 
 Agent metrics describe recorded workflow stages; they are not long-term quality guarantees. The resource snapshot is read-only and does not measure hardware temperature or provide complete service health. Separate fixed native probes provide limited service, package, error-log and firewall summaries; these are partial checks, not a complete security or compliance assessment.
 
+## Release scope and verification
+
+See [Release 0.1 scope and verification](docs/RELEASE_STATUS.md) for the exact supported feature set, tested platforms, CI evidence and explicit exclusions. AETHER CORE 0.1 is a scoped system-inspection framework with two narrowly bounded repair actions, not a general-purpose autonomous repair product.
+
 ## Current capabilities
 
 - Python 3.11+ CLI and Pydantic data contracts.
@@ -75,7 +79,7 @@ This is a first narrow execution capability, not general-purpose command executi
 
 ## Safety limitations
 
-This is an early development release, not a production-ready autonomous repair product. The Docker sandbox currently runs only one fixed, read-only version check; it is not a general-purpose command runner. Proposal-level approval records remain separate from execution authorization. MCP exposes plans but cannot approve or execute actions. This project has not undergone an independent security audit.
+This is a scoped 0.1 release candidate for local system inspection and two narrowly bounded repairs, not a production-certified autonomous repair product. See [the release status](docs/RELEASE_STATUS.md) before deployment. The Docker sandbox currently runs only one fixed, read-only version check; it is not a general-purpose command runner. Proposal-level approval records remain separate from execution authorization. MCP exposes plans but cannot approve or execute actions. This project has not undergone an independent security audit.
 
 ## Install
 
