@@ -300,12 +300,21 @@ def test_plan_rejects_replaced_target_directory(tmp_path, monkeypatch):
 def test_failed_multicomponent_creation_rolls_back_new_empty_directories(tmp_path, monkeypatch):
     if not _supports_race_safe_directory_creation():
         pytest.skip("Descriptor-relative directory creation is unavailable.")
+    from aether_core import repair_actions
+
     db = Database(tmp_path / "test.db")
-    (tmp_path / "blocker").write_text("not a directory", encoding="utf-8")
     plan = create_action_plan(
         db, "ensure_directory",
-        {"relative_path": "new-parent/blocker/child"}, tmp_path,
+        {"relative_path": "new-parent/blocked/child"}, tmp_path,
     )
+    real_mkdir = repair_actions.os.mkdir
+
+    def fail_second_component(path, *args, **kwargs):
+        if path == "blocked":
+            raise PermissionError("simulated second-component failure")
+        return real_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(repair_actions.os, "mkdir", fail_second_component)
     from types import SimpleNamespace
     monkeypatch.setattr(
         "aether_core.repair_actions.sys.stdin",
@@ -315,7 +324,7 @@ def test_failed_multicomponent_creation_rolls_back_new_empty_directories(tmp_pat
         "builtins.input",
         lambda _prompt: f"AUTHORIZE {plan['id']} {plan['sha256']}",
     )
-    with pytest.raises(PermissionError, match="not a directory"):
+    with pytest.raises(PermissionError, match="simulated second-component failure"):
         Executor(db).execute_after_human_prompt(
             plan["id"], plan["sha256"], "human", tmp_path
         )
