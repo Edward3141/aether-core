@@ -15,7 +15,16 @@ AETHER CORE is organized as **four intelligence agents plus one supervised execu
 ## Platform adapters
 
 The registry maps capabilities to documented command references for Linux, macOS and
-Windows. It detects the current platform and filters the catalog accordingly. It reports `available_command_binaries` by checking whether referenced executable binaries are present on PATH; this is advisory and does not run them. Native PowerShell cmdlets are listed as references but are not PATH binaries, so they are not reported as available by that lookup.
+Windows. It detects the current platform and filters the catalog accordingly. Every
+entry exposes `implementation_status`; a command reference is not proof of an adapter.
+The read-only adapters collect system identity, process count, memory, mounted storage,
+network-interface state and uptime through psutil. Fixed native probes add Linux
+systemd failed-service counts, dpkg/rpm package counts, bounded journal error counts
+and firewall state; macOS launchd inventory, pkgutil receipt counts, bounded unified-log
+error counts and application-firewall state; and Windows firewall state, winget package listings when installed, and bounded
+System error-event summaries through wevtutil alongside psutil service inventory.
+Filesystem coverage is limited to home-directory metadata, not recursive auditing.
+Native probes use fixed argument vectors, no shell, short timeouts and secret redaction.
 
 ## Security invariants
 
@@ -24,8 +33,9 @@ Windows. It detects the current platform and filters the catalog accordingly. It
 3. Diagnostic collection continues to use fixed application-owned probes.
 4. Repair execution remains separate in `repair_actions.py`, with typed parameters,
    an explicit allow-list and one human authorization per action. The current
-   `ensure_directory` handler uses descriptor-relative no-follow APIs and is enabled
-   only on supported POSIX systems; unsupported platforms fail closed.
+   `ensure_directory` and `create_empty_file` handlers use descriptor-relative
+   no-follow APIs and are enabled only on supported POSIX systems; unsupported
+   platforms fail closed.
 5. Unknown roles, capabilities, platforms and action IDs fail closed.
 6. Command references may differ by distribution, OS release, installed tools and policy.
    A future catalog update is expected; no honest project can promise every command

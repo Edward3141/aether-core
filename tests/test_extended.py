@@ -33,6 +33,8 @@ def test_scorecard_is_transparent():
 def test_monitor_and_reports_are_serializable(tmp_path):
     snap = collect_snapshot(tmp_path)
     assert snap.disk_total_bytes >= snap.disk_free_bytes
+    assert snap.process_count >= 0
+    assert snap.network_interfaces_up >= 0
     report = build_report(snapshot=snap.to_dict())
     assert '"schema_version": 1' in report_json(report)
     assert "does not authorize repairs" in report_markdown(report)

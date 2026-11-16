@@ -15,8 +15,9 @@ class Orchestrator:
         self.db = database
         self.scout, self.analyst = Scout(), Analyst()
         self.fixer, self.auditor = Fixer(), Auditor()
-        self.executor = Executor(database)
         self.capabilities = CapabilityRegistry()
+        self.executor = Executor(database)
+        self.executor.bind_capabilities(self.capabilities)
         # Integrated services use a sibling SQLite file; existing database schema is untouched.
         memory_path = database.path.with_name("aether-core-knowledge.sqlite3")
         self.knowledge = KnowledgeStore(memory_path)

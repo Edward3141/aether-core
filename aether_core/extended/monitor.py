@@ -1,12 +1,12 @@
-"""Read-only cross-platform system snapshot using the Python standard library."""
+"""Read-only cross-platform system snapshot using psutil and Python APIs."""
 from __future__ import annotations
 
 import os
 import platform
+import psutil
 import shutil
 import time
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -21,24 +21,20 @@ class SystemSnapshot:
     memory_available_bytes: int | None
     disk_total_bytes: int
     disk_free_bytes: int
+    process_count: int
+    network_interfaces_up: int
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
 def _memory() -> tuple[int | None, int | None]:
-    path = Path("/proc/meminfo")
-    if not path.is_file():
-        return None, None
-    values = {}
+    """Return cross-platform physical RAM totals from psutil."""
     try:
-        for line in path.read_text(encoding="ascii").splitlines():
-            key, raw = line.split(":", 1)
-            if key in {"MemTotal", "MemAvailable"}:
-                values[key] = int(raw.strip().split()[0]) * 1024
-    except (OSError, ValueError, IndexError):
+        memory = psutil.virtual_memory()
+    except (psutil.Error, OSError):
         return None, None
-    return values.get("MemTotal"), values.get("MemAvailable")
+    return int(memory.total), int(memory.available)
 
 
 def collect_snapshot(path: str | os.PathLike[str] = ".") -> SystemSnapshot:
@@ -49,6 +45,14 @@ def collect_snapshot(path: str | os.PathLike[str] = ".") -> SystemSnapshot:
         load = None
     total, available = _memory()
     disk = shutil.disk_usage(path)
+    try:
+        process_count = len(psutil.pids())
+    except (psutil.Error, OSError):
+        process_count = 0
+    try:
+        network_interfaces_up = sum(1 for item in psutil.net_if_stats().values() if item.isup)
+    except (psutil.Error, OSError):
+        network_interfaces_up = 0
     return SystemSnapshot(
         time.time(),
         platform.node(),
@@ -60,4 +64,6 @@ def collect_snapshot(path: str | os.PathLike[str] = ".") -> SystemSnapshot:
         available,
         disk.total,
         disk.free,
+        process_count,
+        network_interfaces_up,
     )

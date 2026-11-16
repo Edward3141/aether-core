@@ -36,6 +36,22 @@ class EnsureDirectoryParams(BaseModel):
         return normalized
 
 
+
+class CreateEmptyFileParams(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    relative_path: str = Field(min_length=1, max_length=240)
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        normalized = value.replace("\\", "/")
+        path = PurePosixPath(normalized)
+        if path.is_absolute() or any(part in {"", ".", ".."} for part in normalized.split("/")):
+            raise ValueError("Path must be a clean relative path without traversal.")
+        if ":" in normalized or "\x00" in normalized or len(path.parts) > 8:
+            raise ValueError("Path contains forbidden characters or is too deep.")
+        return normalized
+
 class ActionResult(BaseModel):
     action_id: str
     status: str
@@ -181,12 +197,111 @@ def _ensure_directory(
         ),
     )
 
-_HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
+
+def _create_file(
+    params: CreateEmptyFileParams, root: Path, expected_target_identity: str | None = None
+) -> ActionResult:
+    """Create one new UTF-8 file without overwriting existing content or following links."""
+    if not _supports_race_safe_directory_creation() or os.unlink not in os.supports_dir_fd:
+        raise PermissionError(
+            "This platform does not provide the required race-safe file APIs; the action is disabled."
+        )
+    canonical_root = root.resolve(strict=True)
+    if not canonical_root.is_dir():
+        raise ValueError("Target root must be a directory.")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptors: list[int] = []
+    file_descriptor = None
+    created_identity = None
+    filename = params.relative_path.split("/")[-1]
+    try:
+        root_parts = canonical_root.parts
+        descriptors.append(os.open(root_parts[0], flags))
+        for part in root_parts[1:]:
+            descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
+        if expected_target_identity is not None:
+            opened_identity = _identity_from_stat(canonical_root, os.fstat(descriptors[-1]))
+            if opened_identity != expected_target_identity:
+                raise PermissionError("Approved target changed before file creation.")
+        for part in params.relative_path.split("/")[:-1]:
+            try:
+                descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
+            except OSError as exc:
+                if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                    raise PermissionError(
+                        "Symlink traversal or a non-directory parent is not allowed."
+                    ) from exc
+                raise
+        parent = descriptors[-1]
+        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        file_descriptor = os.open(filename, file_flags, 0o600, dir_fd=parent)
+        metadata = os.fstat(file_descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise PermissionError("Created target is not a regular file.")
+        created_identity = (metadata.st_dev, metadata.st_ino)
+        os.fsync(file_descriptor)
+        named = os.stat(filename, dir_fd=parent, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(named.st_mode)
+            or (named.st_dev, named.st_ino) != created_identity
+        ):
+            raise PermissionError("Created file was replaced during write; refusing to continue.")
+    except Exception as original:
+        if created_identity is not None and descriptors:
+            try:
+                parent = descriptors[-1]
+                current = os.stat(filename, dir_fd=parent, follow_symlinks=False)
+                if (
+                    stat.S_ISREG(current.st_mode)
+                    and (current.st_dev, current.st_ino) == created_identity
+                ):
+                    os.unlink(filename, dir_fd=parent)
+            except FileNotFoundError:
+                pass
+            except OSError as rollback_error:
+                raise RuntimeError(
+                    "File creation failed and safe rollback was incomplete: "
+                    + type(rollback_error).__name__
+                ) from original
+        raise
+    finally:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+    return ActionResult(
+        action_id="create_empty_file",
+        status="executed",
+        detail=(
+            "New UTF-8 file created without overwrite using no-follow descriptors; "
+            f"path={params.relative_path}; empty file created with mode 0600."
+        ),
+    )
+
+_HANDLERS = {
+    "ensure_directory": (EnsureDirectoryParams, _ensure_directory),
+    "create_empty_file": (CreateEmptyFileParams, _create_file),
+}
+# Increment a handler version whenever its behavior, side effects or verification
+# contract changes. Pending plans from older versions must never execute.
+_HANDLER_VERSIONS = {
+    "ensure_directory": 1,
+    "create_empty_file": 1,
+}
 
 
-def _plan_digest(action_id: str, parameters: dict, root: Path, identity: str) -> str:
+def registered_action_ids() -> tuple[str, ...]:
+    """Return the immutable names of typed repair handlers currently registered."""
+    return tuple(sorted(_HANDLERS))
+
+
+def _plan_digest(
+    action_id: str, handler_version: int, parameters: dict, root: Path, identity: str
+) -> str:
     payload = {
         "action_id": action_id,
+        "handler_version": handler_version,
         "parameters": parameters,
         "target_identity": identity,
         "target_root": str(root),
@@ -208,21 +323,60 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
     validated = schema.model_validate(parameters)
     identity = target_identity(root)
     normalized_parameters = validated.model_dump(mode="json")
+    handler_version = _HANDLER_VERSIONS[action_id]
     payload = {
         "action_id": action_id,
+        "handler_version": handler_version,
         "parameters": normalized_parameters,
         "target_identity": identity,
         "target_root": str(root),
     }
-    digest = _plan_digest(action_id, normalized_parameters, root, identity)
+    digest = _plan_digest(
+        action_id, handler_version, normalized_parameters, root, identity
+    )
     plan_id = str(uuid.uuid4())
     created = datetime.now(UTC)
     expires = created + timedelta(minutes=ttl_minutes)
+    stored_contract = {
+        "handler_version": handler_version,
+        "parameters": normalized_parameters,
+    }
     db.create_action_plan(plan_id, action_id,
-        json.dumps(validated.model_dump(mode="json"), sort_keys=True),
+        json.dumps(stored_contract, sort_keys=True),
         str(root), identity, digest, created.isoformat(), expires.isoformat())
     return {"id": plan_id, **payload, "sha256": digest,
             "expires_at": expires.isoformat()}
+
+
+def _validated_plan_contract(plan: dict) -> tuple[int, dict]:
+    """Validate the persisted, versioned action contract before human review and claim."""
+    action_id = plan["action_id"]
+    if action_id not in _HANDLERS:
+        raise ValueError("Action is no longer present in the local allow-list.")
+    schema, _handler = _HANDLERS[action_id]
+    try:
+        stored_contract = json.loads(plan["params_json"])
+        if set(stored_contract) != {"handler_version", "parameters"}:
+            raise ValueError("Stored action contract has an unexpected shape.")
+        handler_version = stored_contract["handler_version"]
+        if (
+            isinstance(handler_version, bool)
+            or handler_version != _HANDLER_VERSIONS[action_id]
+        ):
+            raise ValueError("Registered handler version changed.")
+        parameters = schema.model_validate(
+            stored_contract["parameters"]
+        ).model_dump(mode="json")
+    except Exception as exc:
+        raise ValueError(
+            "Action plan integrity check failed; handler version or parameters changed."
+        ) from exc
+    if _plan_digest(
+        action_id, handler_version, parameters, Path(plan["target_root"]),
+        plan["target_identity"],
+    ) != plan["digest"]:
+        raise ValueError("Action plan integrity check failed; parameters or target were changed.")
+    return handler_version, parameters
 
 
 def _execute_approved_plan(
@@ -241,10 +395,12 @@ def _execute_approved_plan(
     if plan["status"] != "pending":
         raise PermissionError("Action plan is not awaiting authorization.")
 
+    handler_version, review_parameters = _validated_plan_contract(plan)
     review = {
         "plan_id": plan["id"],
         "action": plan["action_id"],
-        "parameters": json.loads(plan["params_json"]),
+        "handler_version": handler_version,
+        "parameters": review_parameters,
         "target_root": plan["target_root"],
         "target_identity": plan["target_identity"],
         "sha256": plan["digest"],
@@ -279,14 +435,10 @@ def _execute_approved_plan(
     if str(root) != plan["target_root"] or target_identity(root) != plan["target_identity"]:
         raise PermissionError("Approved target does not match the current target.")
     action_id = plan["action_id"]
-    if action_id not in _HANDLERS:
-        raise PermissionError("Action is no longer present in the local allow-list.")
-    schema, _handler = _HANDLERS[action_id]
-    try:
-        stored_parameters = schema.model_validate_json(plan["params_json"]).model_dump(mode="json")
-    except Exception as exc:
-        raise ValueError("Stored action parameters failed schema validation.") from exc
-    if _plan_digest(action_id, stored_parameters, root, plan["target_identity"]) != digest:
+    handler_version, stored_parameters = _validated_plan_contract(plan)
+    if _plan_digest(
+        action_id, handler_version, stored_parameters, root, plan["target_identity"]
+    ) != digest:
         raise ValueError("Action plan integrity check failed; parameters or target were changed.")
 
     claim = db.consume_action_plan(
@@ -295,7 +447,10 @@ def _execute_approved_plan(
     action_id = claim["action_id"]
     schema, handler = _HANDLERS[action_id]
     try:
-        params = schema.model_validate_json(claim["params_json"])
+        # Re-check the exact contract returned by the atomic database claim. This
+        # closes the gap between pre-claim validation and the first filesystem side effect.
+        _consumed_version, consumed_parameters = _validated_plan_contract(claim)
+        params = schema.model_validate(consumed_parameters)
         result = handler(
             params, Path(claim["target_root"]), claim["target_identity"]
         )
@@ -330,6 +485,16 @@ class Executor:
 
     def __init__(self, database: Database):
         self.database = database
+        self.capability_registry = None
+
+    def bind_capabilities(self, registry) -> None:
+        self.capability_registry = registry
+
+    def available_capabilities(self, system: str | None = None) -> list[dict]:
+        """List executor capabilities for the host, or an explicitly inspected platform."""
+        if self.capability_registry is None:
+            return []
+        return self.capability_registry.list_for_role("EXECUTOR", system)
 
     def execute_after_human_prompt(
         self, plan_id: str, digest: str, approved_by: str, root: Path,

@@ -81,3 +81,28 @@ def test_summary_filters_repair_execution_for_unsupported_platforms():
     assert "repair.execute" in linux["roles"]["EXECUTOR"]
     assert "repair.execute" not in windows["roles"]["EXECUTOR"]
     assert windows["platform"] == "windows"
+
+
+def test_catalog_discloses_implementation_status_instead_of_implying_all_are_live():
+    registry = CapabilityRegistry()
+    scout = {item["capability_id"]: item for item in registry.list_for_role("SCOUT", "Linux")}
+    assert scout["system.identity"]["implementation_status"] == "implemented_read_only"
+    assert scout["process.inspect"]["implementation_status"] == "partial_read_only"
+    assert scout["logs.inspect"]["implementation_status"] == "partial_read_only"
+    assert scout["packages.inspect"]["implementation_status"] == "partial_read_only"
+    summary = registry.summary("Linux")
+    assert summary["implementation_status"]["repair.execute"] == "partial_typed_actions"
+    assert summary["implementation_status"]["backup.plan"] == "not_implemented"
+
+
+def test_orchestrator_binds_fifth_component_executor_capability(tmp_path):
+    from aether_core.database import Database
+    from aether_core.orchestrator import Orchestrator
+
+    workflow = Orchestrator(Database(tmp_path / "state.sqlite3"))
+    # Query Linux explicitly so this cross-platform contract is tested the same
+    # way on Linux, macOS and Windows CI runners.
+    executor_capabilities = workflow.executor.available_capabilities("Linux")
+    repair = next(item for item in executor_capabilities if item["capability_id"] == "repair.execute")
+    assert repair["implementation_status"] == "partial_typed_actions"
+    assert repair["executable"] is False

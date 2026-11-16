@@ -65,6 +65,6 @@ Role skills currently run as bounded structured-advisory handlers over explicitl
 
 ## Executor scope and limitations
 
-The first end-to-end Executor handler is `ensure_directory`, a bounded operation below an existing selected root. No general shell, script, package installation, service restart, network or privileged execution is enabled. Unsupported action IDs and parameters are rejected. A new handler must be typed, versioned, allow-listed and tested for path safety, preconditions, impact, rollback and verification before it can be executed.
+The current end-to-end Executor handlers are `ensure_directory` and `create_empty_file`, both bounded operations below an existing selected root. No general shell, script, package installation, service restart, network or privileged execution is enabled. Unsupported action IDs and parameters are rejected. A new handler must be typed, versioned, allow-listed and tested for path safety, preconditions, impact, rollback and verification before it can be executed.
 
 The CLI command `execute-action` delegates to the **05 EXECUTOR** component, which presents the request and asks for the exact phrase `AUTHORIZE PLAN_ID SHA256`. The `--by` value is an operator-supplied audit label, not proof of identity. The current filesystem mutation uses descriptor-relative no-follow APIs and is enabled only on supported Linux/macOS systems; Windows and unsupported platforms fail closed. The MCP server can create and return pending plans but cannot answer the human prompt or execute them.

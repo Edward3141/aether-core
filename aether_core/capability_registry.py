@@ -24,10 +24,16 @@ class Capability:
     command_references: dict[str, tuple[str, ...]]
     access: str
     executable: bool = False
+    implementation_status: str = "metadata_only"
     notes: str = ""
 
 
 ALL_ROLES = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "EXECUTOR")
+IMPLEMENTATION_STATUSES = {
+    "implemented_read_only", "partial_read_only", "windows_only",
+    "metadata_only", "proposal_contract_only", "not_implemented",
+    "partial_one_action", "partial_typed_actions",
+}
 READ_ROLES = ("SCOUT", "ANALYST", "AUDITOR")
 FIX_ROLES = ("FIXER", "AUDITOR", "EXECUTOR")
 
@@ -38,66 +44,66 @@ _CATALOG = (
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows", "other"),
                {"linux": ("uname -a", "cat /etc/os-release"), "macos": ("sw_vers", "uname -a"),
                 "windows": ("Get-ComputerInfo", "systeminfo")},
-               "read_only", notes="Prefer Python platform APIs where possible."),
+               "read_only", implementation_status="implemented_read_only", notes="Uses Python platform APIs."),
     Capability("process.inspect", "process", "Inspect running processes and resource use",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("ps aux", "top -b -n 1"), "macos": ("ps aux", "top -l 1"),
                 "windows": ("Get-Process", "tasklist")},
-               "read_only"),
+               "read_only", implementation_status="partial_read_only"),
     Capability("service.inspect", "services", "Inspect service state without changing it",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("systemctl list-units --type=service", "service --status-all"),
                 "macos": ("launchctl list",), "windows": ("Get-Service", "sc.exe query")},
-               "read_only", notes="Service managers and service scopes differ by OS."),
+               "read_only", implementation_status="implemented_read_only", notes="Windows uses psutil; Linux uses fixed systemctl probes; macOS uses fixed launchctl probes."),
     Capability("storage.inspect", "storage", "Inspect filesystems, volumes and free space",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("df -h", "lsblk"), "macos": ("df -h", "diskutil list"),
                 "windows": ("Get-Volume", "Get-PSDrive")},
-               "read_only"),
+               "read_only", implementation_status="partial_read_only"),
     Capability("memory.inspect", "resources", "Inspect memory and virtual-memory pressure",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("free -h", "vmstat"), "macos": ("vm_stat",), 
                 "windows": ("Get-CimInstance Win32_OperatingSystem",)},
-               "read_only"),
+               "read_only", implementation_status="implemented_read_only"),
     Capability("network.inspect", "network", "Inspect interfaces, routes and connections",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("ip address", "ip route", "ss -tulpen"),
                 "macos": ("ifconfig", "netstat -rn", "scutil --dns"),
                 "windows": ("Get-NetIPConfiguration", "Get-NetTCPConnection", "route print")},
-               "read_only"),
+               "read_only", implementation_status="partial_read_only"),
     Capability("logs.inspect", "logs", "Inspect system and application logs",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("journalctl -n 200", "dmesg --ctime"),
                 "macos": ("log show --last 1h",),
                 "windows": ("Get-WinEvent -LogName System -MaxEvents 200",)},
-               "read_only", notes="Log access may require elevated privileges."),
+               "read_only", implementation_status="partial_read_only", notes="Bounded error-count summaries are implemented for Linux journalctl, macOS unified logs and Windows System event logs."),
     Capability("filesystem.inspect", "filesystem", "Inspect paths, permissions and symbolic links",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("stat", "findmnt"), "macos": ("stat", "mount"),
                 "windows": ("Get-Acl", "Get-Item")},
-               "read_only"),
+               "read_only", implementation_status="partial_read_only", notes="Only bounded home-directory metadata is inspected; no recursive filesystem scan is performed."),
     Capability("packages.inspect", "packages", "Inventory installed software and package managers",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("rpm -qa", "dpkg-query -W"), "macos": ("pkgutil --pkgs", "brew list"),
                 "windows": ("winget list", "Get-Package")},
-               "read_only", notes="Package managers vary by distribution and installation."),
+               "read_only", implementation_status="partial_read_only", notes="Bounded dpkg/rpm inventory on Linux, pkgutil receipts on macOS and winget listing on Windows when installed."),
     Capability("security.inspect", "security", "Review firewall, updates and security posture",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("nft list ruleset", "ufw status"), "macos": ("/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate",),
                 "windows": ("Get-NetFirewallProfile", "Get-MpComputerStatus")},
-               "read_only", notes="Some checks are unavailable or restricted on managed devices."),
+               "read_only", implementation_status="partial_read_only", notes="Firewall status probes are implemented for Linux, macOS and Windows; coverage is not a complete security audit."),
     Capability("configuration.plan", "configuration", "Prepare a typed, scoped configuration change",
                ("FIXER", "AUDITOR", "EXECUTOR"), ("linux", "macos", "windows", "other"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
-               "proposal_only", notes="FIXER proposes; AUDITOR reviews; EXECUTOR needs per-action human approval."),
+               "proposal_only", implementation_status="proposal_contract_only", notes="FIXER proposes; AUDITOR reviews; EXECUTOR needs per-action human approval."),
     Capability("backup.plan", "recovery", "Plan and verify a backup before an approved change",
                ("FIXER", "AUDITOR", "EXECUTOR"), ("linux", "macos", "windows", "other"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
-               "proposal_only", notes="Backup and rollback handlers are not implied by this catalog."),
+               "proposal_only", implementation_status="not_implemented", notes="Backup and rollback handlers are not implemented."),
     Capability("repair.execute", "repair", "Execute a versioned typed repair action after human approval",
                ("EXECUTOR",), ("linux", "macos"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
-               "human_approval_required", notes="Only actions registered in repair_actions.py can execute."),
+               "human_approval_required", implementation_status="partial_typed_actions", notes="ensure_directory and create_empty_file are registered; privileged, overwrite and destructive repairs remain disabled."),
 )
 
 
@@ -123,6 +129,8 @@ class CapabilityRegistry:
         for item in capabilities:
             if item.executable:
                 raise ValueError("Capability metadata must never enable command execution.")
+            if item.implementation_status not in IMPLEMENTATION_STATUSES:
+                raise ValueError(f"Capability {item.capability_id!r} has an invalid implementation status.")
             if not item.roles or not set(item.roles).issubset(ALL_ROLES):
                 raise ValueError(f"Capability {item.capability_id!r} has invalid role scope.")
             if not item.platforms or not set(item.platforms).issubset(valid_platforms):
@@ -174,6 +182,8 @@ class CapabilityRegistry:
                 for role in ALL_ROLES
             },
             "catalog_size": len(self._capabilities),
+            "implementation_status": {item.capability_id: item.implementation_status for item in self._capabilities.values()},
+            "implemented_read_only_count": sum(item.implementation_status == "implemented_read_only" for item in self._capabilities.values()),
             "command_execution_enabled": False,
             "repair_execution_source": "typed allow-list only; individual human approval required",
         }
