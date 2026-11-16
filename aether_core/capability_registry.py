@@ -147,11 +147,13 @@ class CapabilityRegistry:
             record["roles"] = list(item.roles)
             record["platforms"] = list(item.platforms)
             record["command_references"] = list(item.command_references.get(target, ()))
-            record["available_commands"] = [
+            record["available_command_binaries"] = [
                 command.split()[0] for command in record["command_references"]
                 if shutil.which(command.split()[0]) is not None
             ]
-            # This checks PATH binaries only. Native PowerShell cmdlets are metadata references,\n            # not PATH binaries, and are intentionally not reported as available here.\n            # Availability is advisory only; no command is invoked.
+            # This checks PATH binaries only. Native PowerShell cmdlets are metadata
+            # references, not PATH binaries, and are not reported as available here.
+            # Availability is advisory only; no command is invoked.
             record["executable"] = False
             results.append(record)
         return results
