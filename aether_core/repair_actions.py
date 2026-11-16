@@ -237,7 +237,7 @@ def _execute_approved_plan(
     if plan is None:
         raise ValueError("Action plan not found.")
     if plan["digest"] != digest:
-        raise ValueError("Action plan digest mismatch.")
+        raise ValueError("Action plan hash mismatch.")
     if plan["status"] != "pending":
         raise PermissionError("Action plan is not awaiting authorization.")
 
