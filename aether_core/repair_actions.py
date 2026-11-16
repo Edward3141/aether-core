@@ -36,6 +36,24 @@ class EnsureDirectoryParams(BaseModel):
         return normalized
 
 
+
+class CreateFileParams(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    relative_path: str = Field(min_length=1, max_length=240)
+    content: str = Field(max_length=16384)
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        normalized = value.replace("\\", "/")
+        path = PurePosixPath(normalized)
+        if path.is_absolute() or any(part in {"", ".", ".."} for part in normalized.split("/")):
+            raise ValueError("Path must be a clean relative path without traversal.")
+        if ":" in normalized or "\x00" in normalized or len(path.parts) > 8:
+            raise ValueError("Path contains forbidden characters or is too deep.")
+        return normalized
+
+
 class ActionResult(BaseModel):
     action_id: str
     status: str
@@ -181,7 +199,89 @@ def _ensure_directory(
         ),
     )
 
-_HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
+
+def _create_file(
+    params: CreateFileParams, root: Path, expected_target_identity: str | None = None
+) -> ActionResult:
+    """Create one new UTF-8 file without overwriting existing content or following links."""
+    if not _supports_race_safe_directory_creation() or os.unlink not in os.supports_dir_fd:
+        raise PermissionError(
+            "This platform does not provide the required race-safe file APIs; the action is disabled."
+        )
+    canonical_root = root.resolve(strict=True)
+    if not canonical_root.is_dir():
+        raise ValueError("Target root must be a directory.")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptors: list[int] = []
+    file_descriptor = None
+    created_identity = None
+    filename = params.relative_path.split("/")[-1]
+    try:
+        root_parts = canonical_root.parts
+        descriptors.append(os.open(root_parts[0], flags))
+        for part in root_parts[1:]:
+            descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
+        if expected_target_identity is not None:
+            opened_identity = _identity_from_stat(canonical_root, os.fstat(descriptors[-1]))
+            if opened_identity != expected_target_identity:
+                raise PermissionError("Approved target changed before file creation.")
+        for part in params.relative_path.split("/")[:-1]:
+            descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
+        parent = descriptors[-1]
+        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        file_descriptor = os.open(filename, file_flags, 0o600, dir_fd=parent)
+        metadata = os.fstat(file_descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise PermissionError("Created target is not a regular file.")
+        created_identity = (metadata.st_dev, metadata.st_ino)
+        data = params.content.encode("utf-8")
+        offset = 0
+        while offset < len(data):
+            written = os.write(file_descriptor, data[offset:])
+            if written <= 0:
+                raise OSError("File write made no progress.")
+            offset += written
+        os.fsync(file_descriptor)
+        named = os.stat(filename, dir_fd=parent, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(named.st_mode)
+            or (named.st_dev, named.st_ino) != created_identity
+        ):
+            raise PermissionError("Created file was replaced during write; refusing to continue.")
+    except Exception as original:
+        if created_identity is not None and descriptors:
+            try:
+                parent = descriptors[-1]
+                current = os.stat(filename, dir_fd=parent, follow_symlinks=False)
+                if (
+                    stat.S_ISREG(current.st_mode)
+                    and (current.st_dev, current.st_ino) == created_identity
+                ):
+                    os.unlink(filename, dir_fd=parent)
+            except FileNotFoundError:
+                pass
+            except OSError as rollback_error:
+                raise RuntimeError(
+                    "File creation failed and safe rollback was incomplete: "
+                    + type(rollback_error).__name__
+                ) from original
+        raise
+    finally:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+    return ActionResult(
+        action_id="create_file",
+        status="executed",
+        detail=(
+            "New UTF-8 file created without overwrite using no-follow descriptors; "
+            f"path={params.relative_path}; bytes={len(params.content.encode('utf-8'))}."
+        ),
+    )
+
+_HANDLERS = {\n    "ensure_directory": (EnsureDirectoryParams, _ensure_directory),\n    "create_file": (CreateFileParams, _create_file),\n}
 
 
 def registered_action_ids() -> tuple[str, ...]:
