@@ -165,6 +165,12 @@ async def run(args):
             + "\n".join(f"- {step}" for step in proposal.steps))
         console.print(Panel(Text(proposal_text), title="FIXER — Proposal only"))
         console.print(Panel(Text(review["advisory"]), title="AUDITOR — Advisory review"))
+        if review.get("action_plans"):
+            console.print(Panel(Text(json.dumps(review["action_plans"], ensure_ascii=False, indent=2)),
+                                title="Actions awaiting individual human authorization"))
+        if review.get("action_plan_errors"):
+            console.print(Panel(Text(json.dumps(review["action_plan_errors"], ensure_ascii=False, indent=2)),
+                                title="Actions rejected by local allow-list"))
         console.print("[yellow]No repair was executed. Human review is required.[/]")
         console.print("[cyan]Integrated intelligence metrics and evidence memory updated.[/]")
         return 0
@@ -178,6 +184,12 @@ async def run(args):
         console.print(Panel(Text(proposal_text), title="FIXER — Remediation proposal"))
         console.print(Text(review["message"]))
         console.print(Text(review["advisory"]))
+        if review.get("action_plans"):
+            console.print(Panel(Text(json.dumps(review["action_plans"], ensure_ascii=False, indent=2)),
+                                title="Actions awaiting individual human authorization"))
+        if review.get("action_plan_errors"):
+            console.print(Panel(Text(json.dumps(review["action_plan_errors"], ensure_ascii=False, indent=2)),
+                                title="Actions rejected by local allow-list"))
         return 0
 
     if args.command == "ask":
