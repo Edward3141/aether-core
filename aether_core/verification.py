@@ -100,7 +100,7 @@ class PostRepairVerifier:
     """Verify action postconditions independently from the action implementation."""
 
     def verify(self, action_id: str, parameters: dict, root: Path) -> list[str]:
-        if action_id not in {"ensure_directory", "create_file"}:
+        if action_id not in {"ensure_directory", "create_empty_file"}:
             raise ValueError("No independent post-repair verifier is registered for this action.")
         relative_path = parameters.get("relative_path")
         if not isinstance(relative_path, str) or not relative_path:
@@ -117,14 +117,11 @@ class PostRepairVerifier:
 
         canonical_root = root.resolve(strict=True)
         checks: list[str] = []
-        if action_id == "create_file":
-            content = parameters.get("content")
-            if not isinstance(content, str) or len(content.encode("utf-8")) > 16384:
-                raise ValueError("Verifier received invalid or oversized file content.")
-            expected = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if action_id == "create_empty_file":
+            expected = hashlib.sha256(b"").hexdigest()
             for attempt in range(1, 4):
                 _verify_file_once(canonical_root, normalized, expected)
-                checks.append(f"pass-{attempt}: regular file content digest matches the approved plan")
+                checks.append(f"pass-{attempt}: empty regular file verified without following symlinks")
             return checks
         # These are three independent descriptor walks, not timed health intervals.
         for attempt in range(1, 4):
