@@ -70,6 +70,17 @@ def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult
 _HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
 
 
+def _plan_digest(action_id: str, parameters: dict, root: Path, identity: str) -> str:
+    payload = {
+        "action_id": action_id,
+        "parameters": parameters,
+        "target_identity": identity,
+        "target_root": str(root),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def create_action_plan(db: Database, action_id: str, parameters: dict,
                        root: Path, ttl_minutes: int = 10) -> dict:
     if action_id not in _HANDLERS:
@@ -82,14 +93,14 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
     schema, _handler = _HANDLERS[action_id]
     validated = schema.model_validate(parameters)
     identity = target_identity(root)
+    normalized_parameters = validated.model_dump(mode="json")
     payload = {
         "action_id": action_id,
-        "parameters": validated.model_dump(mode="json"),
+        "parameters": normalized_parameters,
         "target_identity": identity,
         "target_root": str(root),
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    digest = _plan_digest(action_id, normalized_parameters, root, identity)
     plan_id = str(uuid.uuid4())
     created = datetime.now(UTC)
     expires = created + timedelta(minutes=ttl_minutes)
@@ -115,11 +126,19 @@ def approve_and_execute(db: Database, plan_id: str, digest: str,
         raise PermissionError("Action plan expired; create and review a new plan.")
     if str(root) != plan["target_root"] or target_identity(root) != plan["target_identity"]:
         raise PermissionError("Approved target does not match the current target.")
+    action_id = plan["action_id"]
+    if action_id not in _HANDLERS:
+        raise PermissionError("Action is no longer present in the local allow-list.")
+    schema, _handler = _HANDLERS[action_id]
+    try:
+        stored_parameters = schema.model_validate_json(plan["params_json"]).model_dump(mode="json")
+    except Exception as exc:
+        raise ValueError("Stored action parameters failed schema validation.") from exc
+    if _plan_digest(action_id, stored_parameters, root, plan["target_identity"]) != digest:
+        raise ValueError("Action plan integrity check failed; parameters or target were changed.")
     claim = db.consume_action_plan(plan_id, digest, approved_by,
                                    expires.isoformat(), now.isoformat())
     action_id = claim["action_id"]
-    if action_id not in _HANDLERS:
-        raise PermissionError("Action is no longer present in the local allow-list.")
     schema, handler = _HANDLERS[action_id]
     try:
         params = schema.model_validate_json(claim["params_json"])
