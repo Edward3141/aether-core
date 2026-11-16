@@ -20,13 +20,13 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 - LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
 - SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
 - Local stdio MCP server with read-only diagnostics, audit lookup and proposal lookup.
-- Fixed diagnostics; AI-generated commands are never executed.
+- Fixed diagnostics; AI-generated commands are never executed.\n- Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
 - Explicit CLI confirmation before recording an approval or rejection.
 - GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
 
 ## Safety limitations
 
-This is an early development release, not an autonomous repair product. No repair executor or Docker sandbox is included. Approval records are audit evidence only; they do not authorize or trigger code execution. MCP tools are read-only. This project has not undergone an independent security audit.
+This is an early development release, not an autonomous repair product. No repair executor is included. The Docker sandbox currently runs only one fixed, read-only version check; it is not a general-purpose command runner. Approval records are audit evidence only; they do not authorize or trigger code execution. MCP tools are read-only. This project has not undergone an independent security audit.
 
 ## Install
 
@@ -80,7 +80,7 @@ The MCP interface is read-only. Do not expose an unauthenticated MCP server to a
 
 ## Roadmap
 
-Reviewed Docker isolation, broader allow-listed diagnostics, provider capability detection, per-agent integration tests, richer approval UX, rollback verification and security review. Roadmap items are not implemented features.
+Broader allow-listed diagnostics, provider capability detection, per-agent integration tests, richer approval UX, rollback verification and security review. Roadmap items are not implemented features.
 
 ## License
 
