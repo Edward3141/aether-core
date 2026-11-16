@@ -1,4 +1,4 @@
-"""Read-only cross-platform system snapshot using the Python standard library."""
+"""Read-only cross-platform system snapshot using psutil and Python APIs."""
 from __future__ import annotations
 
 import os
