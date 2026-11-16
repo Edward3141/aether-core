@@ -24,6 +24,7 @@ The intelligence services are now connected to the normal application workflow, 
 - **System monitoring:** read-only system snapshots collect platform, CPU count, load average where available, Linux memory where available, and disk capacity.
 - **Reports:** versioned JSON and Markdown reports combine system snapshots, process metrics and knowledge-ledger counts.
 - **CLI integration:** `aether-core status` displays an intelligence report; `aether-core report --format json` or `--format markdown` exports it. Use `--output report.json` to write a file.
+- **Universal Cross-Platform Capability Registry:** a shared role-scoped catalog maps system, process, service, storage, memory, network, log, filesystem, package and security inspection references across Linux, macOS and Windows. It also describes proposal, audit, backup-planning and execution boundaries. The catalog is metadata only: it checks command availability but never executes command strings or model-generated scripts. Use `aether-core capabilities` or `aether-core capabilities --agent SCOUT` to inspect it.
 - **Built-in Skills:** 50 role-scoped skills for each specialist (200 total), plus shared core services. SCOUT, ANALYST, FIXER and AUDITOR receive different capabilities in the primary workflow. Each skill validates bounded input and returns structured advisory output; the model cannot register code, execute shell commands, authorize changes or bypass human approval. Shared evidence search exposes verified entries only.
 - No new third-party dependency is required. Existing agent contracts and original audit/proposal database schema remain unchanged. The new knowledge ledger is stored separately at `~/.aether-core/aether-core-knowledge.sqlite3` by default.
 
@@ -35,7 +36,7 @@ Metrics currently describe the current application process; they are not histori
 - LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
 - SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
 - Local stdio MCP server with the four-specialist workflow and pending action-plan output; MCP cannot authorize or execute repairs.
-- Fixed diagnostics; AI-generated commands are never executed.
+- Fixed diagnostics; AI-generated commands are never executed. The capability catalog is descriptive only and does not expand the repair allow-list.
 - Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
 - Explicit CLI confirmation before recording an approval or rejection. Decisions are records only and do not trigger repairs.
 - GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
@@ -83,6 +84,8 @@ The default model is `ollama/qwen2.5:7b`; ensure it is available locally if usin
 
 ```bash
 aether-core doctor
+aether-core capabilities
+aether-core capabilities --agent EXECUTOR
 aether-core sandbox-check
 aether-core ask "Explain this system diagnostic"
 aether-core audit
