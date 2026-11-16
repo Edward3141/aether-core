@@ -95,7 +95,7 @@ _CATALOG = (
                {"linux": (), "macos": (), "windows": (), "other": ()},
                "proposal_only", notes="Backup and rollback handlers are not implied by this catalog."),
     Capability("repair.execute", "repair", "Execute a versioned typed repair action after human approval",
-               ("EXECUTOR",), ("linux", "macos", "windows", "other"),
+               ("EXECUTOR",), ("linux", "macos"),
                {"linux": (), "macos": (), "windows": (), "other": ()},
                "human_approval_required", notes="Only actions registered in repair_actions.py can execute."),
 )
