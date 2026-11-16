@@ -63,8 +63,11 @@ def _supports_race_safe_directory_creation() -> bool:
     """Return whether this runtime supports descriptor-relative no-follow creation."""
     return (
         os.name != "nt"
-        and os.open in os.supports_dir_fd
-        and os.mkdir in os.supports_dir_fd
+        and all(
+            operation in os.supports_dir_fd
+            for operation in (os.open, os.mkdir, os.stat, os.rmdir)
+        )
+        and os.stat in os.supports_follow_symlinks
         and hasattr(os, "O_DIRECTORY")
         and hasattr(os, "O_NOFOLLOW")
     )
