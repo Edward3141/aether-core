@@ -4,7 +4,8 @@ from enum import Enum
 import hashlib
 import json
 import uuid
-from pydantic import BaseModel, Field
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -32,6 +33,11 @@ class AuditReport(BaseModel):
     findings: list[Finding] = Field(default_factory=list, max_length=200)
     summary: str = Field(default="", max_length=4000)
 
+class RepairActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    action_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
 class RemediationProposal(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=utcnow)
@@ -44,6 +50,7 @@ class RemediationProposal(BaseModel):
     backup_plan: str = Field(default="Back up affected data before any manual change.", max_length=2000)
     rollback_plan: str = Field(default="Restore the verified backup.", max_length=2000)
     risk: Risk = Risk.MEDIUM
+    actions: list[RepairActionRequest] = Field(default_factory=list, max_length=10)
 
     def content_hash(self) -> str:
         payload = self.model_dump(mode="json", exclude={"created_at"})
