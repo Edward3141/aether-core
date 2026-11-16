@@ -100,7 +100,9 @@ def test_orchestrator_binds_fifth_component_executor_capability(tmp_path):
     from aether_core.orchestrator import Orchestrator
 
     workflow = Orchestrator(Database(tmp_path / "state.sqlite3"))
-    executor_capabilities = workflow.executor.available_capabilities()
+    # Query Linux explicitly so this cross-platform contract is tested the same
+    # way on Linux, macOS and Windows CI runners.
+    executor_capabilities = workflow.executor.available_capabilities("Linux")
     repair = next(item for item in executor_capabilities if item["capability_id"] == "repair.execute")
     assert repair["implementation_status"] == "partial_one_action"
     assert repair["executable"] is False
