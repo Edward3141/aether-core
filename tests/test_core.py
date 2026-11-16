@@ -273,3 +273,43 @@ async def test_orchestrator_runs_four_agents_and_persists_results(tmp_path, monk
     assert db.get_audit(saved_report.id) is not None
     assert db.get_proposal(saved_proposal.id) is not None
     assert review["execution_allowed"] is False
+
+
+def test_stale_approval_cannot_be_recorded_after_proposal_changes(tmp_path: Path):
+    db = Database(tmp_path / "test.db")
+    proposal = RemediationProposal(
+        title="Original", rationale="Original rationale", steps=["Review manually"]
+    )
+    original_hash = db.save_proposal(proposal)
+    now = datetime.now(UTC)
+    record = ApprovalRecord(
+        proposal_id=proposal.id,
+        proposal_hash=original_hash,
+        decision="approved",
+        approved_by="human",
+        created_at=now,
+        expires_at=now + timedelta(minutes=5),
+    )
+    changed = proposal.model_copy(update={"title": "Changed proposal"})
+    db.save_proposal(changed)
+    with pytest.raises(ValueError, match="hash mismatch"):
+        db.save_approval(record)
+
+
+def test_rejected_decision_is_never_an_approval(tmp_path: Path):
+    db = Database(tmp_path / "test.db")
+    proposal = RemediationProposal(
+        title="Test", rationale="Test rationale", steps=["Review manually"]
+    )
+    digest = db.save_proposal(proposal)
+    record = ApprovalRecord(
+        proposal_id=proposal.id,
+        proposal_hash=digest,
+        decision="rejected",
+        approved_by="human",
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    db.save_approval(record)
+    stored = db.list_approvals(proposal.id)
+    assert len(stored) == 1
+    assert stored[0].decision == "rejected"
