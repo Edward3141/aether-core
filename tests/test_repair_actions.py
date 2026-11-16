@@ -205,3 +205,36 @@ def test_executor_refuses_noninteractive_authorization(tmp_path, monkeypatch):
     with pytest.raises(PermissionError, match="live interactive terminal"):
         Executor(db).execute_after_human_prompt(plan["id"], plan["sha256"], "human", tmp_path)
     assert not (tmp_path / "blocked").exists()
+
+
+def test_action_plan_can_be_consumed_only_once_under_concurrency(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import UTC, datetime
+    from threading import Barrier
+
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "race"}, tmp_path)
+    barrier = Barrier(2)
+
+    def consume():
+        barrier.wait()
+        now = datetime.now(UTC).isoformat()
+        return db.consume_action_plan(
+            plan["id"], plan["sha256"], "human",
+            plan["expires_at"], now,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(consume) for _ in range(2)]
+        results = []
+        failures = []
+        for future in futures:
+            try:
+                results.append(future.result())
+            except PermissionError as exc:
+                failures.append(exc)
+
+    assert len(results) == 1
+    assert len(failures) == 1
+    assert db.get_action_plan(plan["id"])["status"] == "consumed"
+    assert not (tmp_path / "race").exists()
