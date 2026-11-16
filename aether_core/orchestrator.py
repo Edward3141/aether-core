@@ -16,7 +16,9 @@ class Orchestrator:
         # Integrated services use a sibling SQLite file; existing database schema is untouched.
         memory_path = database.path.with_name("aether-core-knowledge.sqlite3")
         self.knowledge = KnowledgeStore(memory_path)
-        self.scorecard = AgentScorecard()
+        self.scorecard = AgentScorecard(
+            database.path.with_name("aether-core-agent-metrics.sqlite3")
+        )
 
     async def audit(self) -> tuple[AuditReport, str]:
         try:
