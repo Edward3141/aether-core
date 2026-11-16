@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import platform
+import stat
+import sys
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -36,6 +38,7 @@ class ActionResult(BaseModel):
     action_id: str
     status: str
     detail: str
+    verification: list[str] = Field(default_factory=list)
 
 
 def target_identity(root: Path) -> str:
@@ -61,11 +64,39 @@ def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult
                 raise FileExistsError("A target path component is not a directory.")
     target = root.joinpath(*params.relative_path.split("/"))
     target.mkdir(parents=True, exist_ok=True)
-    resolved = target.resolve(strict=True)
-    if resolved != target and root not in resolved.parents:
-        raise PermissionError("Resolved target escaped the approved root.")
-    return ActionResult(action_id="ensure_directory", status="succeeded",
-                        detail=f"Directory exists: {params.relative_path}")
+    verification = _verify_directory_postcondition(params, root)
+    return ActionResult(
+        action_id="ensure_directory",
+        status="succeeded",
+        detail=f"Directory exists and passed post-repair verification: {params.relative_path}",
+        verification=verification,
+    )
+
+
+def _verify_directory_postcondition(
+    params: EnsureDirectoryParams, root: Path
+) -> list[str]:
+    """Independently re-check the final path three times; fail closed on any mismatch."""
+    canonical_root = root.resolve(strict=True)
+    target = canonical_root.joinpath(*params.relative_path.split("/"))
+    checks = []
+    for attempt in range(1, 4):
+        current = canonical_root
+        for part in params.relative_path.split("/"):
+            current = current / part
+            try:
+                mode = current.lstat().st_mode
+            except FileNotFoundError as exc:
+                raise RuntimeError("Post-repair verification failed: path is missing.") from exc
+            if stat.S_ISLNK(mode):
+                raise PermissionError("Post-repair verification failed: symlink detected.")
+            if not stat.S_ISDIR(mode):
+                raise RuntimeError("Post-repair verification failed: path component is not a directory.")
+        resolved = target.resolve(strict=True)
+        if resolved != target and canonical_root not in resolved.parents:
+            raise PermissionError("Post-repair verification failed: target escaped approved root.")
+        checks.append(f"pass-{attempt}: all components are real directories beneath approved root")
+    return checks
 
 
 _HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
@@ -112,7 +143,7 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
             "expires_at": expires.isoformat()}
 
 
-def approve_and_execute(db: Database, plan_id: str, digest: str,
+def _execute_approved_plan(db: Database, plan_id: str, digest: str,
                         approved_by: str, root: Path) -> ActionResult:
     """Consume a plan once, then execute its fixed handler; never runs arbitrary commands."""
     if not approved_by.strip() or len(approved_by) > 120:
@@ -156,16 +187,25 @@ def approve_and_execute(db: Database, plan_id: str, digest: str,
 
 
 
+def approve_and_execute(*_args, **_kwargs):
+    """Unsafe direct execution is deliberately disabled; use the interactive Executor."""
+    raise PermissionError(
+        "Direct repair execution is disabled. A live interactive human confirmation is required."
+    )
+
+
 class Executor:
-    """Final execution role: requests explicit human authorization for each action."""
+    """Final execution role: requires a live interactive terminal confirmation per action."""
 
     def __init__(self, database: Database):
         self.database = database
 
     def execute_after_human_prompt(
         self, plan_id: str, digest: str, approved_by: str, root: Path,
-        ask_human: Callable[[dict], str],
+        present_review: Callable[[dict], None] | None = None,
     ) -> ActionResult | None:
+        if not sys.stdin.isatty():
+            raise PermissionError("Human authorization requires a live interactive terminal.")
         plan = self.database.get_action_plan(plan_id)
         if plan is None:
             raise ValueError("Action plan not found.")
@@ -184,11 +224,16 @@ class Executor:
             "status": plan["status"],
             "effects": "Executes only the registered typed action; no shell or arbitrary scripts.",
         }
-        response = ask_human(review)
+        if present_review is not None:
+            present_review(review)
         expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
+        response = input(
+            "Authorize this exact repair by typing "
+            f"{expected!r}: "
+        )
         if response != expected:
             return None
         # Re-check state, expiry, target and digest inside the execution gate.
-        return approve_and_execute(
+        return _execute_approved_plan(
             self.database, plan["id"], plan["digest"], approved_by, root
         )
