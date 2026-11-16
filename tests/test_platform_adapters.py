@@ -1,5 +1,4 @@
 from io import BytesIO
-from types import SimpleNamespace
 
 from aether_core import platform_adapters as adapters
 
@@ -64,6 +63,29 @@ def test_fixed_probe_redacts_secrets_and_bounds_streamed_output(monkeypatch):
     assert "alice:secretpass" not in result[1]
     assert "[REDACTED]" in result[1]
     assert "OUTPUT TRUNCATED" in result[1]
+
+def test_fixed_probe_kills_a_timed_out_process(monkeypatch):
+    monkeypatch.setattr(adapters.shutil, "which", lambda name: "/usr/bin/" + name)
+    captured = {}
+
+    class FakeProcess:
+        stdout = BytesIO(b"partial output")
+
+        def wait(self, timeout):
+            if not captured.get("killed"):
+                raise adapters.subprocess.TimeoutExpired("systemctl", timeout)
+            return -9
+
+        def kill(self):
+            captured["killed"] = True
+
+    monkeypatch.setattr(
+        adapters.subprocess, "Popen",
+        lambda *args, **kwargs: FakeProcess(),
+    )
+    assert adapters._run_fixed(("systemctl", "list-units")) is None
+    assert captured["killed"] is True
+
 
 def test_linux_native_adapters_report_services_packages_logs_firewall_and_home(monkeypatch):
     monkeypatch.setattr(adapters.platform, "system", lambda: "Linux")
