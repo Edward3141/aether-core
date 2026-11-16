@@ -114,8 +114,10 @@ def _ensure_directory(
             try:
                 child = os.open(part, flags, dir_fd=descriptor)
             except OSError as exc:
-                if exc.errno == errno.ELOOP:
-                    raise PermissionError("Symlink traversal is not allowed.") from exc
+                if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                    raise PermissionError(
+                        "Symlink traversal or non-directory path component is not allowed."
+                    ) from exc
                 raise
             os.close(descriptor)
             descriptor = child
