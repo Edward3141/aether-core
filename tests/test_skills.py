@@ -70,3 +70,21 @@ def test_registry_rejects_duplicate_skills():
     registry.register(skill)
     with pytest.raises(ValueError, match="unique"):
         registry.register(skill)
+
+def test_report_skill_and_mcp_caller(tmp_path):
+    registry = make_registry(tmp_path)
+    report = registry.execute("report.generate", caller="MCP")
+    assert report["schema_version"] == 1
+    assert report["system_snapshot"]["cpu_count"] >= 1
+    assert report["findings"][0]["title"] == "Knowledge ledger"
+
+
+def test_cli_exposes_skill_commands():
+    from aether_core.cli import build_parser
+
+    assert build_parser().parse_args(["skills"]).command == "skills"
+    args = build_parser().parse_args([
+        "skill", "knowledge.search", "--input", '{"topic":"disk"}'
+    ])
+    assert args.command == "skill"
+    assert args.name == "knowledge.search"
