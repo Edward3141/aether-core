@@ -45,3 +45,15 @@ aether-core skill report.generate
 ```
 
 All current built-in skills are read-only. They do not execute commands or repairs.
+
+
+## Role-specific Skill catalog
+
+The core registry contains exactly 50 skills for each specialist (200 total), separate from the four shared core service skills. Each specialist can invoke only its own role-scoped skills (and a human operator can inspect/use them through authorized interfaces).
+
+- **SCOUT (50):** host/platform inventory, OS/kernel, CPU/memory/disk, filesystems/mounts, network interfaces/routes/DNS, processes/services, package/runtime/container inventory, configuration/log discovery, hardware/resource snapshots, security-control metadata, event and evidence provenance, collection completeness and scope boundaries.
+- **ANALYST (50):** evidence classification, provenance/confidence, hypotheses, root cause, temporal/cross-source correlation, anomalies/trends, performance/capacity, network/DNS/TLS, permissions/configuration/vulnerability/dependency risk, threat modeling, blast radius, incident severity/timeline, uncertainty, evidence gaps and recommendation ranking.
+- **FIXER (50):** repair scope, pre/postconditions, allow-list matching, parameter schemas, path/symlink safety, least privilege, backup/rollback, idempotency, dry-run plans, configuration/package/service/disk/network/database/deployment plans, sandbox/resource/network constraints, testing, execution gates and manual fallback.
+- **AUDITOR (50):** proposal and approval integrity, human consent, single-use/expiry binding, allow-list/schema/shell/code-injection checks, privilege/sandbox/network/filesystem/secret audits, backup/rollback, audit logs, provenance, confidence, false claims, test coverage, privacy/compliance, access control, MCP boundary, post-execution verification and release gate.
+
+Role skills currently run as bounded structured-advisory handlers over explicitly supplied input. They do not pretend to perform external scans or mutate systems. The workflow invokes representative skills at each agent stage; the complete role catalogs are available through the registry. Any future skill that performs real observation or changes must have a concrete implementation, tests and its own permission boundary before being marked operational.
