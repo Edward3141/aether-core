@@ -1,4 +1,5 @@
 """Local read-only MCP server. Created by Edward Tejada."""
+import json
 from mcp.server.fastmcp import FastMCP
 
 from ..config import database_path
@@ -59,6 +60,20 @@ def consultar_propuesta(proposal_id: str) -> dict:
         "sha256": proposal.content_hash(),
         "execution_allowed": False,
     }
+
+
+@mcp.tool()
+def listar_habilidades() -> list[dict]:
+    """List registered, policy-controlled built-in skills."""
+    return Orchestrator(db).skills.list()
+
+
+@mcp.tool()
+def ejecutar_habilidad(nombre: str, argumentos: dict | None = None) -> dict | list | str | int | float | bool:
+    """Execute one registered read-only skill; unknown or unauthorized skills fail closed."""
+    return Orchestrator(db).skills.execute(
+        nombre, caller="MCP", arguments=argumentos or {}
+    )
 
 
 @mcp.tool()
