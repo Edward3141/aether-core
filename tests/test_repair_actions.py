@@ -1,14 +1,14 @@
-"""Tests for the fail-closed repair action boundary. Created by Edward Tejada."""
+"""Tests for allow-listed human-authorized repair execution."""
 import pytest
 from pydantic import ValidationError
 
-from aether_core.repair_actions import EnsureDirectoryParams, execute_registered_action
-
-
-@pytest.mark.parametrize(
-    "path",
-    ["../outside", "/tmp/outside", "C:/Windows/System32", "a/../../outside", ""],
+from aether_core.database import Database
+from aether_core.repair_actions import (
+    EnsureDirectoryParams, approve_and_execute, create_action_plan,
 )
+
+
+@pytest.mark.parametrize("path", ["../outside", "/tmp/outside", "C:/Windows/System32", "a/../../outside", ""])
 def test_action_contract_rejects_unsafe_paths(path):
     with pytest.raises(ValidationError):
         EnsureDirectoryParams(relative_path=path)
@@ -16,19 +16,49 @@ def test_action_contract_rejects_unsafe_paths(path):
 
 def test_action_contract_rejects_extra_parameters():
     with pytest.raises(ValidationError):
-        EnsureDirectoryParams.model_validate(
-            {"relative_path": "cache", "command": "rm -rf /"}
-        )
-
-
-def test_repair_execution_fails_closed_without_approval(tmp_path):
-    with pytest.raises(PermissionError, match="one-time human approval"):
-        execute_registered_action(
-            "ensure_directory", {"relative_path": "cache"}, tmp_path
-        )
-    assert not (tmp_path / "cache").exists()
+        EnsureDirectoryParams.model_validate({"relative_path": "cache", "command": "rm -rf /"})
 
 
 def test_unknown_action_is_rejected(tmp_path):
+    db = Database(tmp_path / "test.db")
     with pytest.raises(ValueError, match="not registered"):
-        execute_registered_action("run_shell", {"command": "whoami"}, tmp_path)
+        create_action_plan(db, "run_shell", {"command": "whoami"}, tmp_path)
+
+
+def test_human_approval_executes_exact_allowlisted_action_once(tmp_path):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "cache"}, tmp_path)
+    assert not (tmp_path / "cache").exists()
+    result = approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
+    assert result.status == "succeeded"
+    assert (tmp_path / "cache").is_dir()
+    with pytest.raises(PermissionError, match="cannot be replayed"):
+        approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
+
+
+def test_wrong_hash_and_wrong_target_do_not_execute(tmp_path):
+    db = Database(tmp_path / "test.db")
+    root = tmp_path / "root"
+    other = tmp_path / "other"
+    root.mkdir()
+    other.mkdir()
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "cache"}, root)
+    with pytest.raises(ValueError, match="digest mismatch"):
+        approve_and_execute(db, plan["id"], "0" * 64, "human", root)
+    with pytest.raises(PermissionError, match="target"):
+        approve_and_execute(db, plan["id"], plan["sha256"], "human", other)
+    assert not (root / "cache").exists()
+    assert not (other / "cache").exists()
+
+
+def test_symlink_escape_is_rejected(tmp_path):
+    db = Database(tmp_path / "test.db")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "link").symlink_to(outside, target_is_directory=True)
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "link/escape"}, root)
+    with pytest.raises(PermissionError, match="Symlink"):
+        approve_and_execute(db, plan["id"], plan["sha256"], "human", root)
+    assert not (outside / "escape").exists()
