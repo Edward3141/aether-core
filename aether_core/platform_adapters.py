@@ -157,14 +157,18 @@ def collect_native_findings() -> list[Finding]:
             "Windows native services",
             "Windows service inventory is collected by the psutil adapter.",
             ["psutil.win_service_iter"], Risk.INFO))
-        findings.append(_finding(
+        findings.append(_probe_count(
             "Package inventory",
-            "No stable built-in package inventory adapter is enabled; optional package managers are not invoked.",
-            ["Windows package inventory adapter not implemented"], Risk.LOW))
-        findings.append(_finding(
+            ("winget", "list", "--disable-interactivity"),
+            "fixed winget installed-package inventory; optional manager may be absent",
+            Risk.INFO,
+        ))
+        findings.append(_probe_count(
             "System error log summary",
-            "Windows event-log collection is not enabled in this release.",
-            ["Windows event-log adapter not implemented"], Risk.LOW))
+            ("wevtutil", "qe", "System", "/q:*[System[(Level=2)]]", "/c:100", "/f:text"),
+            "fixed Windows System event-log error sample (maximum 100 records)",
+            Risk.MEDIUM,
+        ))
         firewall = _run_fixed(("netsh", "advfirewall", "show", "allprofiles", "state"))
         if firewall is None:
             findings.append(_finding("Firewall posture", "Windows firewall status is unavailable.",
