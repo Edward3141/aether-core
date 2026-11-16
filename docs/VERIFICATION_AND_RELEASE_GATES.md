@@ -1,12 +1,15 @@
-# AETHER CORE — Verification and Release Gates
+# AETHER CORE — Five-Component Verification and Release Gates
+
+AETHER CORE consists of **four intelligence agents plus one supervised execution engine**:
+01 SCOUT → 02 ANALYST → 03 FIXER → 04 AUDITOR → **05 EXECUTOR**.
 
 This document defines the evidence required before a release may be described as complete.
 A green CI run is necessary, but is never sufficient by itself.
 
 ## Non-negotiable safety invariants
 
-- SCOUT, ANALYST, FIXER, and AUDITOR cannot perform system changes.
-- EJECUTOR is the only role allowed to invoke a registered repair handler.
+- Components 01–04 (SCOUT, ANALYST, FIXER, AUDITOR) cannot perform system changes.
+- Component 05 (EXECUTOR) is the only role allowed to invoke a registered repair handler.
 - Every action has a separate human approval. Approval is bound to the exact action,
   validated parameters, target identity, target root, and content digest.
 - Approval is single-use, expires, and is consumed atomically.
@@ -25,7 +28,7 @@ A green CI run is necessary, but is never sufficient by itself.
 - Evidence, hypotheses, uncertainty, and historical memory are kept distinct.
 - Model-provider failure leaves safe diagnostics available and cannot authorize changes.
 
-### 2. Human authorization and EJECUTOR
+### 2. Human authorization and EXECUTOR
 - Each proposed action is displayed separately with exact target, parameters,
   effects, risk, backup, rollback, digest, and expiry.
 - Negative tests cover no approval, wrong text, wrong hash, changed parameters,
