@@ -28,6 +28,7 @@ Agent proposals may include typed action requests. The orchestrator validates ea
 
 ```bash
 aether-core action-plan ensure_directory --params '{"relative_path":"cache"}' --root "$HOME"
+aether-core action-plan create_empty_file --params '{"relative_path":"cache/marker.txt"}' --root "$HOME"
 aether-core execute-action PLAN_ID --hash SHA256_FROM_PLAN --by "your identity" --root "$HOME"
 ```
 
