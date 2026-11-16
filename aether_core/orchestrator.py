@@ -3,9 +3,8 @@ from .agents import Analyst, Auditor, Fixer, Scout
 from .database import Database
 from .models import AuditReport, RemediationProposal
 from .extended.knowledge import KnowledgeStore
-from .extended.monitor import collect_snapshot
 from .extended.quality import AgentScorecard
-from .extended.reports import build_report
+from .skills import build_builtin_registry
 
 
 class Orchestrator:
@@ -19,6 +18,7 @@ class Orchestrator:
         self.scorecard = AgentScorecard(
             database.path.with_name("aether-core-agent-metrics.sqlite3")
         )
+        self.skills = build_builtin_registry(self.knowledge, self.scorecard)
 
     async def audit(self) -> tuple[AuditReport, str]:
         try:
@@ -60,13 +60,4 @@ class Orchestrator:
 
     def intelligence_report(self) -> dict:
         """Current process metrics plus a read-only system snapshot and memory count."""
-        snapshot = collect_snapshot()
-        metrics = [metric.__dict__ for metric in self.scorecard.snapshot()]
-        unverified = self.knowledge.count(status="unverified")
-        verified = self.knowledge.count(status="verified")
-        return build_report(
-            snapshot=snapshot.to_dict(),
-            agent_metrics=metrics,
-            findings=[{"title": "Knowledge ledger", "description":
-                       f"{unverified} unverified observations; {verified} verified entries"}],
-        )
+        return self.skills.execute("report.generate", caller="SYSTEM")
