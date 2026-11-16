@@ -1,21 +1,16 @@
-# Universal Cross-Platform Command & Action Registry
+# AETHER CORE — Five-Component Cross-Platform Capability Registry
 
-AETHER CORE uses a shared, role-scoped capability catalog for Linux, macOS and Windows.
-It describes diagnostic command equivalents and the responsibilities each agent may
-perform. It is not a general-purpose shell and it does not execute command strings.
+AETHER CORE is organized as **four intelligence agents plus one supervised execution engine**. This registry describes the role boundaries and platform-specific capability references for all five components across Linux, macOS and Windows. It is not a general-purpose shell and it does not execute command strings.
 
-## Role boundaries
+## Five component roles
 
-- **SCOUT:** read-only system, process, service, storage, memory, network, log,
-  filesystem, package and security inspection.
-- **ANALYST:** evidence correlation, classification, uncertainty and risk analysis.
-- **FIXER:** structured repair proposals, configuration scope, backup and rollback plans.
-  It cannot execute commands or make changes.
-- **AUDITOR:** independent review of action scope, privileges, risks and approval binding.
-  It cannot approve on behalf of the human.
-- **EXECUTOR:** the only role with the repair-execution capability. It can execute only
-  versioned typed handlers in the repair allow-list, after a separate human approval
-  bound to the exact plan, parameters and target.
+- **01 — SCOUT:** read-only system, process, service, storage, memory, network, log, filesystem, package and security inspection.
+- **02 — ANALYST:** evidence correlation, classification, uncertainty and risk analysis.
+- **03 — FIXER:** structured repair proposals, configuration scope, backup and rollback plans. It cannot execute commands or make changes.
+- **04 — AUDITOR:** independent review of action scope, privileges, risks and approval binding. It cannot approve on behalf of the human.
+- **05 — EXECUTOR:** the only role with the repair-execution capability. It can execute only versioned typed handlers in the repair allow-list, after a separate human approval bound to the exact plan, parameters and target.
+
+**Component 05 is the controlled final step:** the other four components prepare and review; only EXECUTOR can perform an allow-listed change after the human explicitly authorizes that exact action.
 
 ## Platform adapters
 
