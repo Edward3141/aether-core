@@ -89,7 +89,7 @@ The main branch commit `8d367786487ed3a66a0504a23e8268321694066c` had:
 
 These results are a baseline, not proof of project completion.
 
-The current repair allow-list contains only `ensure_directory`. The skill registry
+The current repair allow-list contains `ensure_directory` and `create_empty_file`; it remains far short of general system repair. The skill registry
 contains registered entries whose generic advisory handlers are not equivalent to
 independent operational implementations. The system snapshot is limited to basic
 host/resource metadata. Full independent multi-agent post-repair verification,
