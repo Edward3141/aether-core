@@ -1,4 +1,4 @@
-# AETHER CORE — Four-Agent Workflow
+# AETHER CORE — Four Specialists and the Final Executor
 
 Created by Edward Tejada.
 
@@ -7,11 +7,12 @@ Created by Edward Tejada.
 1. **SCOUT** runs fixed local diagnostics using explicit executable paths, argument arrays, timeouts and no shell. It records raw findings. Its configured model may write a clearly labelled summary; if the model is unavailable, fixed diagnostics still complete.
 2. **ANALYST** receives the structured audit report and produces an evidence-based assessment. It must distinguish facts from hypotheses and explain uncertainty.
 3. **FIXER** receives the analysis and returns a validated Pydantic remediation proposal. Invalid JSON is rejected and replaced with a conservative manual-investigation proposal.
-4. **AUDITOR** reviews the proposal for evidence gaps, privileges, scope, side effects and rollback. Its model output is advisory only. It cannot approve, authorize or execute anything.
+4. **AUDITOR** reviews the proposal and every typed action request for evidence gaps, privileges, scope, side effects and rollback. Its model output is advisory only. It cannot approve, authorize or execute anything.
+5. **EXECUTOR** is the final execution role. It receives only locally registered, schema-validated action plans produced after AUDITOR review. It displays the exact action, parameters, target, expiry and digest, then asks the human for a plan-specific confirmation. It executes only after the human types the exact authorization phrase. It cannot run model-generated shell commands or actions outside the local allow-list.
 
 ## Human control
 
-The workflow ends with a proposal, its SHA-256 digest and an advisory review. A person may record an approval or rejection using the CLI after reviewing the exact proposal and typing a confirmation phrase. Approval records expire and are bound to the proposal hash. Recording a decision does not run a repair.
+The specialist workflow ends with a proposal, its SHA-256 digest, an advisory review and (when requested) pending action plans. The final EXECUTOR asks the human for approval separately for each exact action. The confirmation binds the action ID, validated parameters, canonical target and digest; it expires and can be consumed only once. Rejection/cancellation has no side effect. Proposal approval/rejection records remain a separate audit mechanism and do not run repairs.
 
 ## Failure behavior
 
@@ -57,3 +58,10 @@ The core registry contains exactly 50 skills for each specialist (200 total), se
 - **AUDITOR (50):** proposal and approval integrity, human consent, single-use/expiry binding, allow-list/schema/shell/code-injection checks, privilege/sandbox/network/filesystem/secret audits, backup/rollback, audit logs, provenance, confidence, false claims, test coverage, privacy/compliance, access control, MCP boundary, post-execution verification and release gate.
 
 Role skills currently run as bounded structured-advisory handlers over explicitly supplied input. They do not pretend to perform external scans or mutate systems. The workflow invokes representative skills at each agent stage; the complete role catalogs are available through the registry. Any future skill that performs real observation or changes must have a concrete implementation, tests and its own permission boundary before being marked operational.
+
+
+## Executor scope and limitations
+
+The first end-to-end executor handler is `ensure_directory`, a bounded operation below an existing selected root. No general shell, script, package installation, service restart, network or privileged execution is enabled. Unsupported action IDs and parameters are rejected. A new handler must be typed, versioned, allow-listed and tested for path safety, preconditions, impact, rollback and verification before it can be executed.
+
+The CLI command `execute-action` delegates to the Executor role, which presents the request and asks for the exact phrase `AUTHORIZE PLAN_ID SHA256`. The MCP server can create and return pending plans but cannot answer the human prompt or execute them.
