@@ -70,7 +70,7 @@ aether-core execute-action PLAN_ID --hash SHA256 --by "Your identity" --root "$H
 
 The Executor displays the exact request and asks for the confirmation phrase. Every action is separately authorized.
 
-This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` is currently in the allow-list. Additional typed handlers, full backup/rollback and postcondition verification, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
+This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` is currently in the allow-list. Its race-safe implementation uses descriptor-relative no-follow filesystem APIs and is enabled only on supported POSIX systems (Linux/macOS); Windows and other platforms fail closed rather than risk symlink/reparse-point races. Additional typed handlers, full backup/rollback, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
 
 ## Safety limitations
 
