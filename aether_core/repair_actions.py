@@ -184,6 +184,11 @@ def _ensure_directory(
 _HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
 
 
+def registered_action_ids() -> tuple[str, ...]:
+    """Return the immutable names of typed repair handlers currently registered."""
+    return tuple(sorted(_HANDLERS))
+
+
 def _plan_digest(action_id: str, parameters: dict, root: Path, identity: str) -> str:
     payload = {
         "action_id": action_id,
