@@ -348,6 +348,37 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
             "expires_at": expires.isoformat()}
 
 
+def _validated_plan_contract(plan: dict) -> tuple[int, dict]:
+    """Validate the persisted, versioned action contract before human review and claim."""
+    action_id = plan["action_id"]
+    if action_id not in _HANDLERS:
+        raise ValueError("Action is no longer present in the local allow-list.")
+    schema, _handler = _HANDLERS[action_id]
+    try:
+        stored_contract = json.loads(plan["params_json"])
+        if set(stored_contract) != {"handler_version", "parameters"}:
+            raise ValueError("Stored action contract has an unexpected shape.")
+        handler_version = stored_contract["handler_version"]
+        if (
+            isinstance(handler_version, bool)
+            or handler_version != _HANDLER_VERSIONS[action_id]
+        ):
+            raise ValueError("Registered handler version changed.")
+        parameters = schema.model_validate(
+            stored_contract["parameters"]
+        ).model_dump(mode="json")
+    except Exception as exc:
+        raise ValueError(
+            "Action plan integrity check failed; handler version or parameters changed."
+        ) from exc
+    if _plan_digest(
+        action_id, handler_version, parameters, Path(plan["target_root"]),
+        plan["target_identity"],
+    ) != plan["digest"]:
+        raise ValueError("Action plan integrity check failed; parameters or target were changed.")
+    return handler_version, parameters
+
+
 def _execute_approved_plan(
     db: Database, plan_id: str, digest: str, approved_by: str, root: Path,
     present_review: Callable[[dict], None] | None = None,
@@ -364,11 +395,12 @@ def _execute_approved_plan(
     if plan["status"] != "pending":
         raise PermissionError("Action plan is not awaiting authorization.")
 
+    handler_version, review_parameters = _validated_plan_contract(plan)
     review = {
         "plan_id": plan["id"],
         "action": plan["action_id"],
-        "handler_version": _HANDLER_VERSIONS.get(plan["action_id"]),
-        "parameters": json.loads(plan["params_json"]).get("parameters", {}),
+        "handler_version": handler_version,
+        "parameters": review_parameters,
         "target_root": plan["target_root"],
         "target_identity": plan["target_identity"],
         "sha256": plan["digest"],
@@ -403,21 +435,7 @@ def _execute_approved_plan(
     if str(root) != plan["target_root"] or target_identity(root) != plan["target_identity"]:
         raise PermissionError("Approved target does not match the current target.")
     action_id = plan["action_id"]
-    if action_id not in _HANDLERS:
-        raise PermissionError("Action is no longer present in the local allow-list.")
-    schema, _handler = _HANDLERS[action_id]
-    try:
-        stored_contract = json.loads(plan["params_json"])
-        handler_version = stored_contract["handler_version"]
-        if handler_version != _HANDLER_VERSIONS[action_id]:
-            raise ValueError("Registered handler version changed.")
-        stored_parameters = schema.model_validate(
-            stored_contract["parameters"]
-        ).model_dump(mode="json")
-    except Exception as exc:
-        raise ValueError(
-            "Action plan integrity check failed; handler version or parameters changed."
-        ) from exc
+    handler_version, stored_parameters = _validated_plan_contract(plan)
     if _plan_digest(
         action_id, handler_version, stored_parameters, root, plan["target_identity"]
     ) != digest:
