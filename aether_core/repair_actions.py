@@ -96,7 +96,7 @@ def _ensure_directory(
                 child = os.open(root_part, flags, dir_fd=descriptors[-1])
             except OSError as exc:
                 if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
-                    raise PermissionError("Approved root contains a symlink or non-directory.") from exc
+                    raise PermissionError("Approved root contains a Symlink or non-directory.") from exc
                 raise
             descriptors.append(child)
 
@@ -121,7 +121,7 @@ def _ensure_directory(
             except OSError as exc:
                 if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
                     raise PermissionError(
-                        "Path component is a symlink or is not a directory."
+                        "Symlink traversal or a non-directory path component is not allowed."
                     ) from exc
                 raise
 
