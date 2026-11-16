@@ -66,7 +66,7 @@ def build_builtin_registry(
 ) -> SkillRegistry:
     """Create the safe built-in skill set used by the core workflow."""
     registry = SkillRegistry()
-    callers = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "HUMAN", "SYSTEM")
+    callers = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "HUMAN", "SYSTEM", "MCP")
 
     def no_arguments(args: dict[str, Any]) -> None:
         if args:
@@ -119,7 +119,7 @@ def build_builtin_registry(
     ))
     registry.register(SkillSpec(
         "knowledge.search", "Search verified evidence only; unverified entries are excluded.",
-        ("ANALYST", "AUDITOR", "HUMAN"), knowledge_search
+        ("ANALYST", "AUDITOR", "HUMAN", "MCP"), knowledge_search
     ))
     registry.register(SkillSpec(
         "knowledge.stats", "Read counts for verified, unverified and rejected evidence.",
@@ -127,6 +127,6 @@ def build_builtin_registry(
     ))
     registry.register(SkillSpec(
         "report.generate", "Build a JSON-compatible system, agent and evidence report.",
-        ("HUMAN", "SYSTEM"), report_generate
+        ("HUMAN", "SYSTEM", "MCP"), report_generate
     ))
     return registry
