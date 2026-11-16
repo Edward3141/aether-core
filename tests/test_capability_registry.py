@@ -91,7 +91,7 @@ def test_catalog_discloses_implementation_status_instead_of_implying_all_are_liv
     assert scout["logs.inspect"]["implementation_status"] == "partial_read_only"
     assert scout["packages.inspect"]["implementation_status"] == "partial_read_only"
     summary = registry.summary("Linux")
-    assert summary["implementation_status"]["repair.execute"] == "partial_one_action"
+    assert summary["implementation_status"]["repair.execute"] == "partial_typed_actions"
     assert summary["implementation_status"]["backup.plan"] == "not_implemented"
 
 
