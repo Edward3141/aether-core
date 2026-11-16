@@ -23,7 +23,9 @@ Windows. It detects the current platform and filters the catalog accordingly. It
 2. Model output, command strings, scripts and shell snippets are never passed to a shell.
 3. Diagnostic collection continues to use fixed application-owned probes.
 4. Repair execution remains separate in `repair_actions.py`, with typed parameters,
-   an explicit allow-list and one human authorization per action.
+   an explicit allow-list and one human authorization per action. The current
+   `ensure_directory` handler uses descriptor-relative no-follow APIs and is enabled
+   only on supported POSIX systems; unsupported platforms fail closed.
 5. Unknown roles, capabilities, platforms and action IDs fail closed.
 6. Command references may differ by distribution, OS release, installed tools and policy.
    A future catalog update is expected; no honest project can promise every command
