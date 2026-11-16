@@ -28,9 +28,10 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_approvals_proposal_id ON approvals(proposal_id);
                 CREATE TABLE IF NOT EXISTS action_plans (
                     id TEXT PRIMARY KEY, action_id TEXT NOT NULL, params_json TEXT NOT NULL,
-                    target_root TEXT NOT NULL, target_identity TEXT NOT NULL, digest TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+                    target_root TEXT NOT NULL, target_identity TEXT NOT NULL, digest TEXT NOT NULL,
+                    created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending', approved_by TEXT,
-                    expires_at TEXT, consumed_at TEXT, result_json TEXT
+                    consumed_at TEXT, result_json TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_action_plans_status ON action_plans(status);
                 """
@@ -59,7 +60,7 @@ class Database:
             ).fetchone()
         if row is None:
             return None
-        keys = ("id", "action_id", "params_json", "target_root", "digest",
+        keys = ("id", "action_id", "params_json", "target_root", "target_identity", "digest",
                 "created_at", "status", "approved_by", "expires_at",
                 "consumed_at", "result_json")
         return dict(zip(keys, row))
