@@ -27,7 +27,7 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 
 ## Human-authorized repair execution
 
-The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). AETHER CORE is intended to execute only registered, schema-validated repair actions after explicit approval of the exact proposal hash. Approval must be one-time, expire, and never authorize arbitrary model-generated shell commands. This execution capability is **not implemented yet** in the current release.
+The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). AETHER CORE is intended to execute only registered, schema-validated repair actions after explicit approval of the exact proposal hash. Approval must be one-time, expire, and never authorize arbitrary model-generated shell commands. A first local action-registry foundation now exists: a strictly validated `ensure_directory` operation that accepts only a relative path under an explicitly supplied repair root. It has no shell execution path. The approval-consumption gate, execution journal, rollback/verification workflow, and trusted human authorization UI are still under development; therefore this is **not yet an enabled end-to-end repair feature**.
 
 ## Safety limitations
 
@@ -89,7 +89,7 @@ The MCP interface is read-only. Do not expose an unauthenticated MCP server to a
 
 ## Roadmap
 
-A versioned repair-action registry, one-time approval consumption, a fail-closed executor, reversible OS-specific handlers, rollback verification, failure-injection tests and security review. Roadmap items are not implemented features.
+One-time approval consumption, target binding, a fail-closed executor, more reversible OS-specific handlers, rollback verification, failure-injection tests and security review. Roadmap items are not implemented features.
 
 ## License
 
