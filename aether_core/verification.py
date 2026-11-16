@@ -33,9 +33,9 @@ class PostRepairVerifier:
                         "Post-repair verification failed: path component is not a directory."
                     )
             resolved = target.resolve(strict=True)
-            if resolved != target and canonical_root not in resolved.parents:
+            if resolved != target:
                 raise PermissionError(
-                    "Post-repair verification failed: target escaped approved root."
+                    "Post-repair verification failed: target resolution changed or a symlink was detected."
                 )
             checks.append(
                 f"pass-{attempt}: all components are real directories beneath approved root"
