@@ -104,5 +104,5 @@ def test_orchestrator_binds_fifth_component_executor_capability(tmp_path):
     # way on Linux, macOS and Windows CI runners.
     executor_capabilities = workflow.executor.available_capabilities("Linux")
     repair = next(item for item in executor_capabilities if item["capability_id"] == "repair.execute")
-    assert repair["implementation_status"] == "partial_one_action"
+    assert repair["implementation_status"] == "partial_typed_actions"
     assert repair["executable"] is False
