@@ -3,17 +3,33 @@
 
 **Intelligence working together. Humans stay in control.**
 
+# 5-COMPONENT AUTONOMOUS ARCHITECTURE
+
+**4 intelligence agents + 1 supervised execution engine.**
+
+AETHER CORE is built around five cooperating components. The first four investigate, reason, propose and audit. The fifth — **05 EXECUTOR** — is the only component that can carry out an approved change, and it must obtain a separate, explicit human authorization for every action.
+
+| Component | Responsibility |
+|---|---|
+| **01 — SCOUT** | Fixed, read-only system inspection and evidence collection. |
+| **02 — ANALYST** | Evidence analysis, uncertainty, anomalies and risk classification. |
+| **03 — FIXER** | Structured repair proposals; never executes changes. |
+| **04 — AUDITOR** | Independent scope and safety review; never grants authorization. |
+| **05 — EXECUTOR** | The final action component. Presents the exact operation and waits for the human's individual approval before executing. |
+
+> **05 — EXECUTOR: the final step belongs to the human-supervised execution engine.**
+>
+> The Executor is the only component permitted to invoke a registered repair handler. No agent, model response, MCP request or audit recommendation can replace the human's explicit approval.
+
+Created by Edward Tejada · MIT License
+
 Open-source, cross-platform Python framework for system inspection, evidence-based analysis, and human-supervised remediation planning.
 
-**Created by Edward Tejada** · MIT License
+## Five-component workflow
 
-## Four specialist agents and a supervised Executor
+SCOUT → ANALYST → FIXER → AUDITOR → **05 EXECUTOR**
 
-- **SCOUT** — fixed, read-only system diagnostics plus an AI-generated summary explicitly labelled as advisory.
-- **ANALYST** — evidence review, uncertainty and risk classification.
-- **FIXER** — remediation proposals with typed, allow-listed action requests and backup/rollback guidance; never executes repairs.
-- **AUDITOR** — AI-assisted proposal review, scope/risk checks and human oversight records. It cannot grant execution permission.
-- **EXECUTOR (final stage)** — receives action requests after AUDITOR review, presents each exact operation to the human, and executes only after explicit per-action confirmation.
+The first four components prepare and review a proposed action. The fifth performs the final controlled step only after the human reviews and authorizes that exact action.
 
 ## Integrated intelligence capabilities
 
@@ -24,7 +40,8 @@ The intelligence services are now connected to the normal application workflow, 
 - **System monitoring:** read-only system snapshots collect platform, CPU count, load average where available, Linux memory where available, and disk capacity.
 - **Reports:** versioned JSON and Markdown reports combine system snapshots, process metrics and knowledge-ledger counts.
 - **CLI integration:** `aether-core status` displays an intelligence report; `aether-core report --format json` or `--format markdown` exports it. Use `--output report.json` to write a file.
-- **Built-in Skills:** 50 role-scoped skills for each specialist (200 total), plus shared core services. SCOUT, ANALYST, FIXER and AUDITOR receive different capabilities in the primary workflow. Each skill validates bounded input and returns structured advisory output; the model cannot register code, execute shell commands, authorize changes or bypass human approval. Shared evidence search exposes verified entries only.
+- **Universal Cross-Platform Capability Registry:** a shared role-scoped catalog maps system, process, service, storage, memory, network, log, filesystem, package and security inspection references across Linux, macOS and Windows. It also describes proposal, audit, backup-planning and execution boundaries. The catalog is metadata only: it performs a PATH lookup for executable binaries only (native PowerShell cmdlets are documented references, not PATH binaries) and never executes command strings or model-generated scripts. Use `aether-core capabilities` or `aether-core capabilities --agent SCOUT` to inspect it.
+- **Built-in Skills:** 50 role-scoped skills for each of the four intelligence agents (200 total), plus shared core services. SCOUT, ANALYST, FIXER and AUDITOR receive different capabilities in the primary workflow. Each skill validates bounded input and returns structured advisory output; the model cannot register code, execute shell commands, authorize changes or bypass human approval. Shared evidence search exposes verified entries only.
 - No new third-party dependency is required. Existing agent contracts and original audit/proposal database schema remain unchanged. The new knowledge ledger is stored separately at `~/.aether-core/aether-core-knowledge.sqlite3` by default.
 
 Metrics currently describe the current application process; they are not historical long-term agent benchmarks. System monitoring is read-only and does not claim temperature or service-health coverage.
@@ -32,17 +49,17 @@ Metrics currently describe the current application process; they are not histori
 ## Current capabilities
 
 - Python 3.11+ CLI and Pydantic data contracts.
-- LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
+- LiteLLM adapter with independent model, API base and API key settings per intelligence agent; shared settings are fallback values.
 - SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
-- Local stdio MCP server with the four-specialist workflow and pending action-plan output; MCP cannot authorize or execute repairs.
-- Fixed diagnostics; AI-generated commands are never executed.
+- Local stdio MCP server exposing the four-agent intelligence workflow and pending action-plan output; MCP cannot authorize or execute repairs.
+- Fixed diagnostics; AI-generated commands are never executed. The capability catalog is descriptive only and does not expand the repair allow-list.
 - Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
 - Explicit CLI confirmation before recording an approval or rejection. Decisions are records only and do not trigger repairs.
 - GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
 
 ## Human-authorized repair execution
 
-The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). A first end-to-end local execution path is implemented for one narrowly scoped action: `ensure_directory`, which creates a relative directory under an explicitly selected existing root. FIXER can request this typed action; the orchestrator validates it and creates a pending plan after AUDITOR review. The final EXECUTOR presents the exact action, parameters, target, expiry and digest, then asks the human to type the plan-specific authorization phrase. Rejection or cancellation causes no change. Approval is consumed atomically once, expires, is bound to the exact action parameters and target, and cannot be replayed. The handler never runs shell commands, scripts or arbitrary model text.
+The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). The **05 EXECUTOR** component has a first end-to-end local execution path for one narrowly scoped action: `ensure_directory`, which creates a relative directory under an explicitly selected existing root. FIXER can request this typed action; the orchestrator validates it and creates a pending plan after AUDITOR review. EXECUTOR presents the exact action, parameters, target, expiry and digest, then asks the human to type the plan-specific authorization phrase. Rejection or cancellation causes no change. Approval is consumed atomically once, expires, is bound to the exact action parameters and target, and cannot be replayed. The handler never runs shell commands, scripts or arbitrary model text.
 
 Example:
 
@@ -51,9 +68,9 @@ aether-core action-plan ensure_directory --params '{"relative_path":"cache"}' --
 aether-core execute-action PLAN_ID --hash SHA256 --by "Your identity" --root "$HOME"
 ```
 
-The executor displays the exact request and asks for the confirmation phrase. Every action is separately authorized.
+The Executor displays the exact request and asks for the confirmation phrase. Every action is separately authorized.
 
-This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` is currently in the allow-list. Additional typed handlers, full backup/rollback and postcondition verification, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
+This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` is currently in the allow-list. Its race-safe implementation uses descriptor-relative no-follow filesystem APIs and is enabled only on supported POSIX systems (Linux/macOS); Windows and other platforms fail closed rather than risk symlink/reparse-point races. Additional typed handlers, full backup/rollback, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
 
 ## Safety limitations
 
@@ -83,6 +100,8 @@ The default model is `ollama/qwen2.5:7b`; ensure it is available locally if usin
 
 ```bash
 aether-core doctor
+aether-core capabilities
+aether-core capabilities --agent EXECUTOR
 aether-core sandbox-check
 aether-core ask "Explain this system diagnostic"
 aether-core audit
@@ -119,7 +138,7 @@ Run `aether-core-mcp` for a local stdio MCP server. Tools:
 - `listar_habilidades`
 - `ejecutar_habilidad` (only registered read-only skills)
 
-The MCP interface is read-only. Do not expose an unauthenticated MCP server to a network.
+The MCP interface does not execute system repairs. It can collect diagnostics and persist audits, proposals and pending action plans, but it cannot authorize or execute the fifth component's repair step. Do not expose an unauthenticated MCP server to a network.
 
 ## Roadmap
 

@@ -39,7 +39,9 @@ added to the allow-list.
 ## Remaining work
 
 This is the first controlled execution capability, not general-purpose shell
-access and not completion of autonomous repair. More action handlers,
-rollback support, richer execution journaling, per-platform tests, and a
-trusted interactive approval UI remain necessary. Privileged, destructive,
+access and not completion of autonomous repair. More action handlers, verified backup/restore and rollback for future state-changing operations,
+richer execution journaling, broader per-platform failure-injection tests, and a
+trusted interactive approval UI remain necessary. The current `ensure_directory`
+handler only removes newly created empty directories after a later-step failure; it
+does not provide backup/restore for existing user data. Privileged, destructive,
 irreversible and network-enabled actions remain blocked.
