@@ -71,3 +71,13 @@ def test_registry_rejects_invalid_or_executable_custom_metadata():
     )
     with pytest.raises(ValueError, match="invalid platform scope"):
         CapabilityRegistry((invalid_platform,))
+
+
+
+def test_summary_filters_repair_execution_for_unsupported_platforms():
+    registry = CapabilityRegistry()
+    linux = registry.summary("Linux")
+    windows = registry.summary("Windows")
+    assert "repair.execute" in linux["roles"]["EXECUTOR"]
+    assert "repair.execute" not in windows["roles"]["EXECUTOR"]
+    assert windows["platform"] == "windows"
