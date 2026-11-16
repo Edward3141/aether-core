@@ -1,6 +1,5 @@
 """Workflow coordinator with integrated intelligence telemetry and evidence memory."""
 import json
-from pathlib import Path
 from .agents import Analyst, Auditor, Fixer, Scout
 from .database import Database
 from .models import AuditReport, RemediationProposal
