@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from aether_core.database import Database
 from aether_core.repair_actions import (
     EnsureDirectoryParams, Executor, approve_and_execute, create_action_plan,
-    _supports_race_safe_directory_creation,
+    _supports_race_safe_directory_creation, _execute_approved_plan,
 )
 
 
@@ -330,3 +330,22 @@ def test_failed_multicomponent_creation_rolls_back_new_empty_directories(tmp_pat
         )
     assert not (tmp_path / "new-parent").exists()
     assert db.get_action_plan(plan["id"])["status"] == "failed"
+
+
+
+def test_internal_execution_entrypoint_requires_live_human_confirmation(tmp_path, monkeypatch):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(
+        db, "ensure_directory", {"relative_path": "internal-bypass"}, tmp_path
+    )
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        "aether_core.repair_actions.sys.stdin",
+        SimpleNamespace(isatty=lambda: False),
+    )
+    with pytest.raises(PermissionError, match="live interactive terminal"):
+        _execute_approved_plan(
+            db, plan["id"], plan["sha256"], "audit-label", tmp_path
+        )
+    assert db.get_action_plan(plan["id"])["status"] == "pending"
+    assert not (tmp_path / "internal-bypass").exists()

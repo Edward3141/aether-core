@@ -225,18 +225,54 @@ def create_action_plan(db: Database, action_id: str, parameters: dict,
             "expires_at": expires.isoformat()}
 
 
-def _execute_approved_plan(db: Database, plan_id: str, digest: str,
-                        approved_by: str, root: Path) -> ActionResult:
-    """Consume a plan once, then execute its fixed handler; never runs arbitrary commands."""
-    if not approved_by.strip() or len(approved_by) > 120:
-        raise ValueError("A valid human approver identity is required.")
-    root = root.resolve(strict=True)
-    now = datetime.now(UTC)
+def _execute_approved_plan(
+    db: Database, plan_id: str, digest: str, approved_by: str, root: Path,
+    present_review: Callable[[dict], None] | None = None,
+) -> ActionResult | None:
+    """Single execution boundary: even internal callers must obtain live human confirmation."""
+    if not sys.stdin.isatty():
+        raise PermissionError("Human authorization requires a live interactive terminal.")
+
     plan = db.get_action_plan(plan_id)
     if plan is None:
         raise ValueError("Action plan not found.")
-    if digest != plan["digest"]:
+    if plan["digest"] != digest:
         raise ValueError("Action plan digest mismatch.")
+    if plan["status"] != "pending":
+        raise PermissionError("Action plan is not awaiting authorization.")
+
+    review = {
+        "plan_id": plan["id"],
+        "action": plan["action_id"],
+        "parameters": json.loads(plan["params_json"]),
+        "target_root": plan["target_root"],
+        "target_identity": plan["target_identity"],
+        "sha256": plan["digest"],
+        "expires_at": plan["expires_at"],
+        "status": plan["status"],
+        "effects": "Executes only the registered typed action; no shell or arbitrary scripts.",
+    }
+    if present_review is not None:
+        present_review(review)
+    expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
+    response = input(
+        "Authorize this exact repair by typing "
+        f"{expected!r}: "
+    )
+    if response != expected:
+        return None
+
+    # Reload after the human prompt: reject expiry, replay, edits or target replacement.
+    plan = db.get_action_plan(plan_id)
+    if plan is None or plan["status"] != "pending":
+        raise PermissionError("Action plan is no longer awaiting authorization.")
+    if plan["digest"] != digest:
+        raise ValueError("Action plan digest changed during human review.")
+    if not approved_by.strip() or len(approved_by) > 120:
+        raise ValueError("A valid human approver audit label is required.")
+
+    root = root.resolve(strict=True)
+    now = datetime.now(UTC)
     expires = datetime.fromisoformat(plan["expires_at"])
     if now >= expires:
         raise PermissionError("Action plan expired; create and review a new plan.")
@@ -252,8 +288,10 @@ def _execute_approved_plan(db: Database, plan_id: str, digest: str,
         raise ValueError("Stored action parameters failed schema validation.") from exc
     if _plan_digest(action_id, stored_parameters, root, plan["target_identity"]) != digest:
         raise ValueError("Action plan integrity check failed; parameters or target were changed.")
-    claim = db.consume_action_plan(plan_id, digest, approved_by,
-                                   expires.isoformat(), now.isoformat())
+
+    claim = db.consume_action_plan(
+        plan_id, digest, approved_by, expires.isoformat(), now.isoformat()
+    )
     action_id = claim["action_id"]
     schema, handler = _HANDLERS[action_id]
     try:
@@ -272,10 +310,11 @@ def _execute_approved_plan(db: Database, plan_id: str, digest: str,
         db.finish_action_plan(plan_id, "succeeded", result.model_dump_json())
         return result
     except Exception as exc:
-        db.finish_action_plan(plan_id, "failed",
-            json.dumps({"error_type": type(exc).__name__, "detail": str(exc)[:500]}))
+        db.finish_action_plan(
+            plan_id, "failed",
+            json.dumps({"error_type": type(exc).__name__, "detail": str(exc)[:500]}),
+        )
         raise
-
 
 
 
@@ -296,36 +335,9 @@ class Executor:
         self, plan_id: str, digest: str, approved_by: str, root: Path,
         present_review: Callable[[dict], None] | None = None,
     ) -> ActionResult | None:
-        if not sys.stdin.isatty():
-            raise PermissionError("Human authorization requires a live interactive terminal.")
-        plan = self.database.get_action_plan(plan_id)
-        if plan is None:
-            raise ValueError("Action plan not found.")
-        if plan["digest"] != digest:
-            raise ValueError("Action plan hash mismatch.")
-        if plan["status"] != "pending":
-            raise PermissionError("Action plan is not awaiting authorization.")
-        review = {
-            "plan_id": plan["id"],
-            "action": plan["action_id"],
-            "parameters": json.loads(plan["params_json"]),
-            "target_root": plan["target_root"],
-            "target_identity": plan["target_identity"],
-            "sha256": plan["digest"],
-            "expires_at": plan["expires_at"],
-            "status": plan["status"],
-            "effects": "Executes only the registered typed action; no shell or arbitrary scripts.",
-        }
-        if present_review is not None:
-            present_review(review)
-        expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
-        response = input(
-            "Authorize this exact repair by typing "
-            f"{expected!r}: "
-        )
-        if response != expected:
-            return None
-        # Re-check state, expiry, target and digest inside the execution gate.
+        # The underlying execution boundary also prompts, so importing/calling it
+        # directly cannot bypass the human authorization requirement.
         return _execute_approved_plan(
-            self.database, plan["id"], plan["digest"], approved_by, root
+            self.database, plan_id, digest, approved_by, root, present_review
+        )
         )
