@@ -31,6 +31,8 @@ async def ejecutar_flujo_completo() -> dict:
         "proposal": proposal.model_dump(mode="json"),
         "proposal_sha256": proposal.content_hash(),
         "auditor_review": review,
+        "action_plans": review.get("action_plans", []),
+        "action_plan_errors": review.get("action_plan_errors", []),
         "execution_allowed": False,
         "human_approval_required": True,
     }
