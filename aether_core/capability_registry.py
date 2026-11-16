@@ -119,6 +119,19 @@ class CapabilityRegistry:
         ids = [item.capability_id for item in capabilities]
         if len(ids) != len(set(ids)):
             raise ValueError("Capability IDs must be unique.")
+        valid_platforms = {"linux", "macos", "windows", "other"}
+        for item in capabilities:
+            if item.executable:
+                raise ValueError("Capability metadata must never enable command execution.")
+            if not item.roles or not set(item.roles).issubset(ALL_ROLES):
+                raise ValueError(f"Capability {item.capability_id!r} has invalid role scope.")
+            if not item.platforms or not set(item.platforms).issubset(valid_platforms):
+                raise ValueError(f"Capability {item.capability_id!r} has invalid platform scope.")
+            if not set(item.command_references).issubset(valid_platforms):
+                raise ValueError(f"Capability {item.capability_id!r} has invalid command platform.")
+            if any(not isinstance(command, str) or not command.strip()
+                   for commands in item.command_references.values() for command in commands):
+                raise ValueError(f"Capability {item.capability_id!r} has an invalid command reference.")
         self._capabilities = {item.capability_id: item for item in capabilities}
 
     def list_for_role(self, role: str, system: str | None = None) -> list[dict]:
@@ -138,7 +151,7 @@ class CapabilityRegistry:
                 command.split()[0] for command in record["command_references"]
                 if shutil.which(command.split()[0]) is not None
             ]
-            # Availability is advisory only; no command is invoked.
+            # This checks PATH binaries only. Native PowerShell cmdlets are metadata references,\n            # not PATH binaries, and are intentionally not reported as available here.\n            # Availability is advisory only; no command is invoked.
             record["executable"] = False
             results.append(record)
         return results
