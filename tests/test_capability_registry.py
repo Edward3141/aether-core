@@ -24,6 +24,8 @@ def test_role_scoping_and_platform_adaptation():
 def test_executor_is_only_role_with_repair_execution_capability():
     registry = CapabilityRegistry()
     assert "repair.execute" in [x["capability_id"] for x in registry.list_for_role("EXECUTOR", "Linux")]
+    assert "repair.execute" in [x["capability_id"] for x in registry.list_for_role("EXECUTOR", "Darwin")]
+    assert "repair.execute" not in [x["capability_id"] for x in registry.list_for_role("EXECUTOR", "Windows")]
     for role in ("SCOUT", "ANALYST", "FIXER", "AUDITOR"):
         assert "repair.execute" not in [x["capability_id"] for x in registry.list_for_role(role, "Linux")]
 
