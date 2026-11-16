@@ -27,7 +27,7 @@ def test_fixed_probe_redacts_secrets_and_bounds_output(monkeypatch):
         "run",
         lambda *args, **kwargs: SimpleNamespace(
             returncode=0,
-            stdout="password=hunter2\nAuthorization: Bearer abc123\n",
+            stdout="password=hunter2\nAuthorization: Bearer abc123\nurl=https://alice:secretpass@example.test/path\n",
             stderr="",
         ),
     )
@@ -35,6 +35,7 @@ def test_fixed_probe_redacts_secrets_and_bounds_output(monkeypatch):
     assert result is not None
     assert "hunter2" not in result[1]
     assert "abc123" not in result[1]
+    assert "alice:secretpass" not in result[1]
     assert "[REDACTED]" in result[1]
 
 
