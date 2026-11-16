@@ -21,8 +21,8 @@ The read-only adapters collect system identity, process count, memory, mounted s
 network-interface state and uptime through psutil. Fixed native probes add Linux
 systemd failed-service counts, dpkg/rpm package counts, bounded journal error counts
 and firewall state; macOS launchd inventory, pkgutil receipt counts, bounded unified-log
-error counts and application-firewall state; and Windows firewall state alongside
-psutil service inventory. Windows package and event-log collection remain unavailable.
+error counts and application-firewall state; and Windows firewall state, winget package listings when installed, and bounded
+System error-event summaries through wevtutil alongside psutil service inventory.
 Filesystem coverage is limited to home-directory metadata, not recursive auditing.
 Native probes use fixed argument vectors, no shell, short timeouts and secret redaction.
 
