@@ -3,6 +3,7 @@ import platform
 import shutil
 import subprocess
 from .models import AuditReport, Finding, Risk
+from .platform_inspection import collect_platform_findings
 
 CHECKS = {"python": ["--version"], "git": ["--version"]}
 
@@ -13,6 +14,7 @@ def collect_diagnostics() -> AuditReport:
         Finding(title="Python runtime", detail=platform.python_version(),
                 risk=Risk.INFO, evidence=["platform.python_version()"], confidence=1.0),
     ]
+    findings.extend(collect_platform_findings())
     for executable, args in CHECKS.items():
         path = shutil.which(executable)
         if not path:
