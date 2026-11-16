@@ -7,12 +7,25 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 
 **Created by Edward Tejada** · MIT License
 
-## Four agents
+## Four integrated agents
 
 - **SCOUT** — fixed, read-only system diagnostics plus an AI-generated summary explicitly labelled as advisory.
 - **ANALYST** — evidence review, uncertainty and risk classification.
 - **FIXER** — remediation proposals with backup and rollback guidance; never executes repairs.
 - **AUDITOR** — AI-assisted proposal review, proposal hash checks and human oversight records. Its model can never grant execution permission.
+
+## Integrated intelligence capabilities
+
+The intelligence services are now connected to the normal application workflow, not merely standalone examples:
+
+- **Evidence memory:** every SCOUT finding is recorded in a dedicated local SQLite knowledge ledger as unverified. Only an explicit evidence-backed verification can promote an entry; search defaults to verified entries.
+- **Agent performance metrics:** the orchestrator records successful and failed agent stages during audits and planning.
+- **System monitoring:** read-only system snapshots collect platform, CPU count, load average where available, Linux memory where available, and disk capacity.
+- **Reports:** versioned JSON and Markdown reports combine system snapshots, process metrics and knowledge-ledger counts.
+- **CLI integration:** `aether-core status` displays an intelligence report; `aether-core report --format json` or `--format markdown` exports it. Use `--output report.json` to write a file.
+- No new third-party dependency is required. Existing agent contracts and original audit/proposal database schema remain unchanged. The new knowledge ledger is stored separately at `~/.aether-core/aether-core-knowledge.sqlite3` by default.
+
+Metrics currently describe the current application process; they are not historical long-term agent benchmarks. System monitoring is read-only and does not claim temperature or service-health coverage.
 
 ## Current capabilities
 
@@ -59,7 +72,10 @@ The default model is `ollama/qwen2.5:7b`; ensure it is available locally if usin
 aether-core doctor
 aether-core sandbox-check
 aether-core ask "Explain this system diagnostic"
-aether-core audit  # runs all four agents in sequence
+aether-core audit
+aether-core status
+aether-core report --format markdown
+aether-core report --format json --output aether-report.json
 aether-core plan "Paste the analyst's evidence-based summary here"
 aether-core --help
 pytest
