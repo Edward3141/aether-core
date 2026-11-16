@@ -1,11 +1,13 @@
 """Workflow coordinator with integrated intelligence telemetry and evidence memory."""
 import json
+from pathlib import Path
 from .agents import Analyst, Auditor, Fixer, Scout
 from .database import Database
 from .models import AuditReport, RemediationProposal
 from .extended.knowledge import KnowledgeStore
 from .extended.quality import AgentScorecard
 from .skills import build_builtin_registry
+from .repair_actions import create_action_plan
 
 
 class Orchestrator:
@@ -66,6 +68,25 @@ class Orchestrator:
             self.db.save_proposal(proposal)
             review = await self.auditor.review(proposal)
             self.scorecard.record("AUDITOR", success=True)
+            action_plans = []
+            action_plan_errors = []
+            # Agent-selected targets are never trusted: every action is confined to
+            # the application's own data directory selected by the local operator.
+            trusted_root = self.db.path.parent.resolve()
+            for requested in proposal.actions:
+                try:
+                    action_plans.append(create_action_plan(
+                        self.db, requested.action_id, requested.parameters, trusted_root
+                    ))
+                except (ValueError, OSError) as exc:
+                    action_plan_errors.append({
+                        "action_id": requested.action_id,
+                        "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                    })
+            review["action_plans"] = action_plans
+            review["action_plan_errors"] = action_plan_errors
+            review["execution_allowed"] = False
+            review["human_approval_required"] = True
             return proposal, review
         except Exception:
             if "proposal" not in locals():
