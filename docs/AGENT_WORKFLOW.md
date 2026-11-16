@@ -24,3 +24,24 @@ The workflow ends with a proposal, its SHA-256 digest and an advisory review. A 
 ## Model configuration
 
 Each agent can have its own model, API base and API key through AETHER_SCOUT_*, AETHER_ANALYST_*, AETHER_FIXER_* and AETHER_AUDITOR_*. Shared AETHER_MODEL, AETHER_API_BASE and AETHER_API_KEY values are fallbacks. Credentials must stay outside source control.
+## Built-in Skills
+
+Skills are reusable, deterministic capabilities separate from agent roles. The core registry includes:
+
+- `system.snapshot` — read-only OS, CPU, memory and disk metadata.
+- `knowledge.search` — evidence lookup restricted to verified entries and bounded results.
+- `knowledge.stats` — counts for verified, unverified and rejected records.
+- `report.generate` — combines system metadata, durable agent metrics and evidence counts.
+
+Each skill declares permitted callers. Unknown names, unauthorized callers, extra arguments and invalid values are rejected. Registration is explicit in Python code; the model cannot add code or grant itself a skill.
+
+CLI:
+
+```bash
+aether-core skills
+aether-core skill system.snapshot
+aether-core skill knowledge.search --input '{"topic":"disk","limit":10}'
+aether-core skill report.generate
+```
+
+All current built-in skills are read-only. They do not execute commands or repairs.
