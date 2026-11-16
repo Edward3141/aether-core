@@ -307,14 +307,14 @@ def test_failed_multicomponent_creation_rolls_back_new_empty_directories(tmp_pat
         db, "ensure_directory",
         {"relative_path": "new-parent/blocked/child"}, tmp_path,
     )
-    real_mkdir = repair_actions.os.mkdir
+    real_mkdir_at = repair_actions._mkdir_at
 
-    def fail_second_component(path, *args, **kwargs):
+    def fail_second_component(path, *, mode, dir_fd):
         if path == "blocked":
             raise PermissionError("simulated second-component failure")
-        return real_mkdir(path, *args, **kwargs)
+        return real_mkdir_at(path, mode=mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(repair_actions.os, "mkdir", fail_second_component)
+    monkeypatch.setattr(repair_actions, "_mkdir_at", fail_second_component)
     from types import SimpleNamespace
     monkeypatch.setattr(
         "aether_core.repair_actions.sys.stdin",

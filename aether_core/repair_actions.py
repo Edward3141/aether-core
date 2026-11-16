@@ -73,6 +73,11 @@ def _supports_race_safe_directory_creation() -> bool:
     )
 
 
+def _mkdir_at(path: str, *, mode: int, dir_fd: int) -> None:
+    """Small seam for safe descriptor-relative directory creation."""
+    os.mkdir(path, mode=mode, dir_fd=dir_fd)
+
+
 def _ensure_directory(
     params: EnsureDirectoryParams, root: Path, expected_target_identity: str | None = None
 ) -> ActionResult:
@@ -114,7 +119,7 @@ def _ensure_directory(
             parent = descriptors[-1]
             created_here = False
             try:
-                os.mkdir(part, mode=0o755, dir_fd=parent)
+                _mkdir_at(part, mode=0o755, dir_fd=parent)
                 created_here = True
             except FileExistsError:
                 pass
