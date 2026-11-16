@@ -8,8 +8,6 @@ from __future__ import annotations
 import os
 import platform
 import time
-from typing import Any
-
 import psutil
 
 from .models import Finding, Risk
