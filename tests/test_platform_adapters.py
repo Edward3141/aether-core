@@ -1,3 +1,4 @@
+from io import BytesIO
 from types import SimpleNamespace
 
 from aether_core import platform_adapters as adapters
@@ -7,37 +8,62 @@ def test_fixed_probe_uses_no_shell_bounded_timeout_and_no_stdin(monkeypatch):
     seen = {}
     monkeypatch.setattr(adapters.shutil, "which", lambda name: "/usr/bin/" + name)
 
-    def fake_run(argv, **kwargs):
+    class FakeProcess:
+        stdout = BytesIO(b"safe output\\n")
+
+        def wait(self, timeout):
+            seen["wait_timeout"] = timeout
+            return 0
+
+        def kill(self):
+            seen["killed"] = True
+
+    def fake_popen(argv, **kwargs):
         seen["argv"] = argv
         seen.update(kwargs)
-        return SimpleNamespace(returncode=0, stdout="safe output", stderr="")
+        return FakeProcess()
 
-    monkeypatch.setattr(adapters.subprocess, "run", fake_run)
-    assert adapters._run_fixed(("systemctl", "list-units")) == (0, "safe output\n")
+    monkeypatch.setattr(adapters.subprocess, "Popen", fake_popen)
+    assert adapters._run_fixed(("systemctl", "list-units")) == (0, "safe output\\n")
     assert seen["shell"] is False
-    assert seen["timeout"] == adapters._TIMEOUT_SECONDS
+    assert seen["wait_timeout"] == adapters._TIMEOUT_SECONDS
     assert seen["stdin"] is adapters.subprocess.DEVNULL
+    assert seen["stdout"] is adapters.subprocess.PIPE
+    assert seen["stderr"] is adapters.subprocess.STDOUT
     assert seen["argv"] == ["/usr/bin/systemctl", "list-units"]
 
 
-def test_fixed_probe_redacts_secrets_and_bounds_output(monkeypatch):
+def test_fixed_probe_redacts_secrets_and_bounds_streamed_output(monkeypatch):
     monkeypatch.setattr(adapters.shutil, "which", lambda name: "/usr/bin/" + name)
+    captured = {}
+
+    class FakeProcess:
+        stdout = BytesIO(
+            b"password=hunter2\\nAuthorization: Bearer abc123\\n"
+            b"url=https://alice:secretpass@example.test/path\\n"
+            + (b"x" * (adapters._MAX_OUTPUT * 3))
+        )
+
+        def wait(self, timeout):
+            return 0
+
+        def kill(self):
+            captured["killed"] = True
+
     monkeypatch.setattr(
-        adapters.subprocess,
-        "run",
-        lambda *args, **kwargs: SimpleNamespace(
-            returncode=0,
-            stdout="password=hunter2\nAuthorization: Bearer abc123\nurl=https://alice:secretpass@example.test/path\n",
-            stderr="",
-        ),
+        adapters.subprocess, "Popen",
+        lambda *args, **kwargs: FakeProcess(),
     )
     result = adapters._run_fixed(("journalctl", "-n", "5"))
     assert result is not None
+    assert result[0] == 125
+    assert captured.get("killed") is True
+    assert len(result[1].encode("utf-8")) <= adapters._MAX_OUTPUT + 100
     assert "hunter2" not in result[1]
     assert "abc123" not in result[1]
     assert "alice:secretpass" not in result[1]
     assert "[REDACTED]" in result[1]
-
+    assert "OUTPUT TRUNCATED" in result[1]
 
 def test_linux_native_adapters_report_services_packages_logs_firewall_and_home(monkeypatch):
     monkeypatch.setattr(adapters.platform, "system", lambda: "Linux")
