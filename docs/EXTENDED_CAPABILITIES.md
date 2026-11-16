@@ -22,7 +22,7 @@ The four intelligence agents produce and review the proposal; the fifth componen
 
 ## Data and compatibility
 
-The original audit/proposal SQLite schema and agent Pydantic contracts are unchanged. Knowledge entries use a separate SQLite file beside the configured AETHER database. The scorecard is process-local and is not a durable historical benchmark. System snapshots do not change system state.
+The original audit/proposal SQLite schema and agent Pydantic contracts are unchanged. Knowledge entries use a separate SQLite file beside the configured AETHER database. The scorecard is process-local and is not a durable historical benchmark. System snapshots do not change system state. The CLI's fixed diagnostics now include psutil-backed process-count, memory, storage, network-interface and uptime measurements; these are read-only observations, not remediation handlers.
 
 ## Important limits
 
