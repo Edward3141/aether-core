@@ -15,7 +15,12 @@ AETHER CORE is organized as **four intelligence agents plus one supervised execu
 ## Platform adapters
 
 The registry maps capabilities to documented command references for Linux, macOS and
-Windows. It detects the current platform and filters the catalog accordingly. It reports `available_command_binaries` by checking whether referenced executable binaries are present on PATH; this is advisory and does not run them. Native PowerShell cmdlets are listed as references but are not PATH binaries, so they are not reported as available by that lookup.
+Windows. It detects the current platform and filters the catalog accordingly. Every
+entry exposes `implementation_status`; a command reference is not proof of an adapter.
+The read-only adapters currently collect system identity, process count, memory,
+mounted storage, network-interface state and uptime through psutil. Windows service
+enumeration is also implemented. Linux/macOS service enumeration, logs, package
+inventory, filesystem auditing and security-posture probes remain metadata-only.
 
 ## Security invariants
 
