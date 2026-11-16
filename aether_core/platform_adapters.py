@@ -113,8 +113,11 @@ def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
 
     output = b"".join(retained).decode("utf-8", errors="replace")
     if overflow.is_set():
-        output += "\\n[OUTPUT TRUNCATED: probe exceeded the configured output limit]"
-        return 125, _redact(output)
+        return (
+            125,
+            _redact(output)
+            + "\\n[OUTPUT TRUNCATED: probe exceeded the configured output limit]",
+        )
     return return_code, _redact(output)
 
 
