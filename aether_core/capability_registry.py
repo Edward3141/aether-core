@@ -164,12 +164,13 @@ class CapabilityRegistry:
         except KeyError as exc:
             raise ValueError(f"Unknown capability: {capability_id}") from exc
 
-    def summary(self) -> dict:
+    def summary(self, system: str | None = None) -> dict:
+        target = detect_platform(system)
         return {
-            "platform": detect_platform(),
+            "platform": target,
             "roles": {
                 role: [item.capability_id for item in self._capabilities.values()
-                       if role in item.roles]
+                       if role in item.roles and target in item.platforms]
                 for role in ALL_ROLES
             },
             "catalog_size": len(self._capabilities),
