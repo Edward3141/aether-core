@@ -349,3 +349,8 @@ def test_internal_execution_entrypoint_requires_live_human_confirmation(tmp_path
         )
     assert db.get_action_plan(plan["id"])["status"] == "pending"
     assert not (tmp_path / "internal-bypass").exists()
+
+
+def test_runtime_registered_action_inventory_matches_cli_contract():
+    from aether_core.repair_actions import registered_action_ids
+    assert registered_action_ids() == ("ensure_directory",)
