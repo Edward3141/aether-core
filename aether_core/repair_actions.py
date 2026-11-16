@@ -1,11 +1,18 @@
-"""Fail-closed repair action contracts. Created by Edward Tejada.
+"""Allow-listed, human-authorized local repair actions.
 
-Repair execution remains disabled until a one-time, atomically consumed approval
-executor is implemented. No action handler is exposed to callers in this release.
+Only typed operations are supported. Model-generated shell or script text is never run.
 """
-from pathlib import PurePosixPath
+import hashlib
+import json
+import os
+import platform
+import uuid
+from datetime import UTC, datetime, timedelta
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .database import Database
 
 
 class EnsureDirectoryParams(BaseModel):
@@ -19,10 +26,8 @@ class EnsureDirectoryParams(BaseModel):
         path = PurePosixPath(normalized)
         if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
             raise ValueError("Path must be a clean relative path without traversal.")
-        if ":" in normalized or "\x00" in normalized:
-            raise ValueError("Path contains a forbidden character.")
-        if len(path.parts) > 8:
-            raise ValueError("Path is too deep.")
+        if ":" in normalized or "\\x00" in normalized or len(path.parts) > 8:
+            raise ValueError("Path contains forbidden characters or is too deep.")
         return normalized
 
 
@@ -32,12 +37,102 @@ class ActionResult(BaseModel):
     detail: str
 
 
-def execute_registered_action(action_id: str, parameters: dict, root) -> ActionResult:
-    """Reject all repair execution until the trusted approval executor exists."""
-    if action_id != "ensure_directory":
-        raise ValueError("Repair action is not registered.")
-    EnsureDirectoryParams.model_validate(parameters)
-    raise PermissionError(
-        "Repair execution is disabled: one-time human approval and atomic "
-        "consumption are not implemented."
-    )
+def target_identity(root: Path) -> str:
+    """Bind plans to the canonical local target directory and host identity."""
+    canonical = root.resolve(strict=True)
+    if not canonical.is_dir():
+        raise ValueError("Target root must be an existing directory.")
+    material = f"{platform.node()}|{os.name}|{canonical}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult:
+    root = root.resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("Target root must be a directory.")
+    current = root
+    for part in params.relative_path.split("/"):
+        current = current / part
+        if current.exists() or current.is_symlink():
+            if current.is_symlink():
+                raise PermissionError("Symlink traversal is not allowed.")
+            if not current.is_dir():
+                raise FileExistsError("A target path component is not a directory.")
+    target = root.joinpath(*params.relative_path.split("/"))
+    target.mkdir(parents=True, exist_ok=True)
+    resolved = target.resolve(strict=True)
+    if resolved != target and root not in resolved.parents:
+        raise PermissionError("Resolved target escaped the approved root.")
+    return ActionResult(action_id="ensure_directory", status="succeeded",
+                        detail=f"Directory exists: {params.relative_path}")
+
+
+_HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
+
+
+def create_action_plan(db: Database, action_id: str, parameters: dict,
+                       root: Path, ttl_minutes: int = 10) -> dict:
+    if action_id not in _HANDLERS:
+        raise ValueError("Action is not registered in the local allow-list.")
+    if not 1 <= ttl_minutes <= 30:
+        raise ValueError("Action plan lifetime must be between 1 and 30 minutes.")
+    root = root.resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("Target root must be an existing directory.")
+    schema, _handler = _HANDLERS[action_id]
+    validated = schema.model_validate(parameters)
+    identity = target_identity(root)
+    payload = {
+        "action_id": action_id,
+        "parameters": validated.model_dump(mode="json"),
+        "target_identity": identity,
+        "target_root": str(root),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    plan_id = str(uuid.uuid4())
+    created = datetime.now(UTC)
+    db.create_action_plan(plan_id, action_id,
+        json.dumps(validated.model_dump(mode="json"), sort_keys=True),
+        str(root), digest, created.isoformat())
+    return {"id": plan_id, **payload, "sha256": digest,
+            "expires_at": (created + timedelta(minutes=ttl_minutes)).isoformat()}
+
+
+def approve_and_execute(db: Database, plan_id: str, digest: str,
+                        approved_by: str, root: Path) -> ActionResult:
+    """Consume a plan once, then execute its fixed handler; never runs arbitrary commands."""
+    if not approved_by.strip() or len(approved_by) > 120:
+        raise ValueError("A valid human approver identity is required.")
+    root = root.resolve(strict=True)
+    now = datetime.now(UTC)
+    plan = db.get_action_plan(plan_id)
+    if plan is None:
+        raise ValueError("Action plan not found.")
+    expires = datetime.fromisoformat(plan["created_at"]) + timedelta(minutes=10)
+    if now >= expires:
+        raise PermissionError("Action plan expired; create and review a new plan.")
+    if str(root) != plan["target_root"] or target_identity(root) != _identity_from_plan(
+        plan["action_id"], plan["params_json"], root
+    ):
+        raise PermissionError("Approved target does not match the current target.")
+    claim = db.consume_action_plan(plan_id, digest, approved_by,
+                                   expires.isoformat(), now.isoformat())
+    action_id = claim["action_id"]
+    if action_id not in _HANDLERS:
+        raise PermissionError("Action is no longer present in the local allow-list.")
+    schema, handler = _HANDLERS[action_id]
+    try:
+        params = schema.model_validate_json(claim["params_json"])
+        result = handler(params, Path(claim["target_root"]))
+        db.finish_action_plan(plan_id, "succeeded", result.model_dump_json())
+        return result
+    except Exception as exc:
+        db.finish_action_plan(plan_id, "failed",
+            json.dumps({"error_type": type(exc).__name__, "detail": str(exc)[:500]}))
+        raise
+
+
+def _identity_from_plan(action_id: str, params_json: str, root: Path) -> str:
+    # Recomputed from the same host and canonical target; plan digest independently binds parameters.
+    return target_identity(root)
