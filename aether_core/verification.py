@@ -86,6 +86,13 @@ def _verify_file_once(root: Path, relative_path: str, expected_sha256: str) -> N
             if total > 16384:
                 raise RuntimeError("File verification failed: content exceeds the action limit.")
             chunks.append(chunk)
+        opened_identity = (metadata.st_dev, metadata.st_ino)
+        named = os.stat(parts[-1], dir_fd=descriptors[-1], follow_symlinks=False)
+        if (
+            not stat.S_ISREG(named.st_mode)
+            or (named.st_dev, named.st_ino) != opened_identity
+        ):
+            raise RuntimeError("File verification failed: directory entry changed during verification.")
         actual = hashlib.sha256(b"".join(chunks)).hexdigest()
         if actual != expected_sha256:
             raise RuntimeError("File verification failed: content digest does not match the approved plan.")
