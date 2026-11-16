@@ -147,7 +147,7 @@ def collect_native_findings() -> list[Finding]:
                                      ["fixed socketfilterfw global-state probe"], Risk.LOW))
         else:
             code, output = firewall
-            enabled = code == 0 and "enabled" in output.lower()
+            enabled = code == 0 and ("firewall is enabled" in output.lower() or "state = 1" in output.lower())
             findings.append(_finding("Firewall posture",
                                      "Application firewall reports enabled." if enabled else "Application firewall is disabled or state is unknown.",
                                      ["fixed socketfilterfw global-state probe"],
@@ -175,7 +175,7 @@ def collect_native_findings() -> list[Finding]:
                                      ["fixed netsh advfirewall state probe"], Risk.LOW))
         else:
             code, output = firewall
-            enabled = code == 0 and "on" in output.lower()
+            enabled = code == 0 and re.search(r"\\bstate\\s+on\\b", output, re.IGNORECASE) is not None
             findings.append(_finding("Firewall posture",
                                      "At least one firewall profile reports ON." if enabled else "Firewall state is OFF or unknown.",
                                      ["fixed netsh advfirewall state probe"],
