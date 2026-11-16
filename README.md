@@ -77,6 +77,9 @@ aether-core audit
 aether-core status
 aether-core report --format markdown
 aether-core report --format json --output aether-report.json
+aether-core skills
+aether-core skill system.snapshot
+aether-core skill knowledge.search --input '{"topic":"disk","limit":10}'
 aether-core plan "Paste the analyst's evidence-based summary here"
 aether-core --help
 pytest
@@ -101,6 +104,8 @@ Run `aether-core-mcp` for a local stdio MCP server. Tools:
 - `consultar_auditoria`
 - `consultar_propuesta`
 - `consultar_decisiones`
+- `listar_habilidades`
+- `ejecutar_habilidad` (only registered read-only skills)
 
 The MCP interface is read-only. Do not expose an unauthenticated MCP server to a network.
 
