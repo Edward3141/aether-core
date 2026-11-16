@@ -9,20 +9,20 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 
 ## Four agents
 
-- **SCOUT** — fixed, read-only system diagnostics.
+- **SCOUT** — fixed, read-only system diagnostics plus an AI-generated summary explicitly labelled as advisory.
 - **ANALYST** — evidence review, uncertainty and risk classification.
 - **FIXER** — remediation proposals with backup and rollback guidance; never executes repairs.
-- **AUDITOR** — proposal hash review and human oversight records.
+- **AUDITOR** — AI-assisted proposal review, proposal hash checks and human oversight records. Its model can never grant execution permission.
 
 ## Current capabilities
 
 - Python 3.11+ CLI and Pydantic data contracts.
 - LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
 - SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
-- Local stdio MCP server with read-only diagnostics, audit lookup and proposal lookup.
+- Local stdio MCP server with the complete four-agent workflow, read-only diagnostics, audit/proposal lookup and decision-history lookup.
 - Fixed diagnostics; AI-generated commands are never executed.
 - Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
-- Explicit CLI confirmation before recording an approval or rejection.
+- Explicit CLI confirmation before recording an approval or rejection. Decisions are records only and do not trigger repairs.
 - GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
 
 ## Safety limitations
