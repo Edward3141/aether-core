@@ -65,6 +65,7 @@ Example:
 
 ```bash
 aether-core action-plan ensure_directory --params '{"relative_path":"cache"}' --root "$HOME"
+aether-core action-plan create_empty_file --params '{"relative_path":"cache/marker.txt"}' --root "$HOME"
 aether-core execute-action PLAN_ID --hash SHA256 --by "Your identity" --root "$HOME"
 ```
 
