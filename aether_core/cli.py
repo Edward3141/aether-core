@@ -100,7 +100,7 @@ async def run(args):
             "plan_id": plan["id"], "action": plan["action_id"],
             "parameters": json.loads(plan["params_json"]),
             "target_root": plan["target_root"], "sha256": plan["digest"],
-            "status": plan["status"], "expires_at": plan["created_at"],
+            "status": plan["status"], "expires_at": plan["expires_at"],
         }, ensure_ascii=False, indent=2)), title="EXACT ACTION REQUIRING HUMAN APPROVAL"))
         expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
         typed = console.input(f"Type exactly '{expected}' to authorize this one action: ")
