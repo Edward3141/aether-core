@@ -26,4 +26,4 @@ The original audit/proposal SQLite schema and agent Pydantic contracts are uncha
 
 ## Important limits
 
-This integration improves context retention and observability; it does not train model weights or guarantee more accurate reasoning. Memory is evidence-labelled and unverified by default. Reports and metrics never authorize repairs. The repair Executor and one-time approval consumption remain separate work and are not implied by these capabilities.
+This integration improves context retention and observability; it does not train model weights or guarantee more accurate reasoning. Memory is evidence-labelled and unverified by default. Reports and metrics never authorize repairs. The repair Executor is a separate, deliberately narrow execution path: the current allow-list contains only `ensure_directory`, requires a live terminal confirmation for every action, consumes the exact plan once, and verifies the resulting directory through no-follow descriptors. If a multi-component creation fails, newly created empty directories are removed when their inode identity still matches. This does not provide general backup/restore or broad autonomous repair.
