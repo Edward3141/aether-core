@@ -1,8 +1,4 @@
-"""Explicit registry for deterministic, bounded AETHER CORE skills.
-
-Skills are Python handlers registered by the application. No dynamic imports,
-shell execution, eval, or model-authored code is supported.
-"""
+"""Explicit registry of deterministic, bounded AETHER CORE skills."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,18 +9,16 @@ from ..extended.monitor import collect_snapshot
 from ..extended.quality import AgentScorecard
 from ..extended.reports import build_report
 
-
 @dataclass(frozen=True)
 class SkillSpec:
     name: str
     description: str
     allowed_callers: tuple[str, ...]
     handler: Callable[[dict[str, Any]], Any]
-
+    category: str = 'operational'
 
 class SkillRegistry:
     """Allow-listed skill dispatcher with caller and argument validation."""
-
     def __init__(self) -> None:
         self._skills: dict[str, SkillSpec] = {}
 
@@ -35,98 +29,264 @@ class SkillRegistry:
             raise ValueError("a skill must declare at least one allowed caller")
         self._skills[skill.name] = skill
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, caller: str | None = None) -> list[dict[str, Any]]:
+        identity = caller.strip().upper() if caller else None
         return [
-            {
-                "name": skill.name,
-                "description": skill.description,
-                "allowed_callers": list(skill.allowed_callers),
-                "execution": "local deterministic handler",
-            }
-            for skill in sorted(self._skills.values(), key=lambda item: item.name)
+            {'name': s.name, 'description': s.description, 'allowed_callers': list(s.allowed_callers), 'execution': s.category}
+            for s in sorted(self._skills.values(), key=lambda x: x.name)
+            if identity is None or identity in s.allowed_callers
         ]
 
-    def execute(
-        self, name: str, *, caller: str, arguments: dict[str, Any] | None = None
-    ) -> Any:
+    def for_agent(self, agent: str) -> list[dict[str, Any]]:
+        identity = agent.strip().upper()
+        return [item for item in self.list(identity) if item['name'].startswith(identity.lower() + '.')]
+
+    def execute(self, name: str, *, caller: str, arguments: dict[str, Any] | None = None) -> Any:
         skill = self._skills.get(name)
         if skill is None:
             raise ValueError("skill is not registered")
         identity = caller.strip().upper()
         if identity not in skill.allowed_callers:
             raise PermissionError("caller is not allowed to use this skill")
-        payload = arguments or {}
+        payload = {} if arguments is None else arguments
         if not isinstance(payload, dict):
             raise ValueError("skill arguments must be an object")
         return skill.handler(payload)
 
-
-def build_builtin_registry(
-    knowledge: KnowledgeStore, scorecard: AgentScorecard
-) -> SkillRegistry:
-    """Create the safe built-in skill set used by the core workflow."""
+def build_builtin_registry(knowledge: KnowledgeStore, scorecard: AgentScorecard) -> SkillRegistry:
+    """Create core services and 200 role-specific skills (50 per agent)."""
     registry = SkillRegistry()
-    callers = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "HUMAN", "SYSTEM", "MCP")
-
+    callers = ('SCOUT', 'ANALYST', 'FIXER', 'AUDITOR', 'HUMAN', 'SYSTEM', 'MCP')
     def no_arguments(args: dict[str, Any]) -> None:
-        if args:
-            raise ValueError("this skill does not accept arguments")
-
+        if args: raise ValueError('this skill does not accept arguments')
     def system_snapshot(args: dict[str, Any]) -> dict[str, Any]:
-        no_arguments(args)
-        return collect_snapshot().to_dict()
-
+        no_arguments(args); return collect_snapshot().to_dict()
     def knowledge_stats(args: dict[str, Any]) -> dict[str, int]:
-        no_arguments(args)
-        return {
-            "unverified": knowledge.count(status="unverified"),
-            "verified": knowledge.count(status="verified"),
-            "rejected": knowledge.count(status="rejected"),
-            "total": knowledge.count(),
-        }
-
+        no_arguments(args); return {key: knowledge.count(status=key) for key in ('unverified', 'verified', 'rejected')} | {'total': knowledge.count()}
     def knowledge_search(args: dict[str, Any]) -> list[dict[str, Any]]:
-        if set(args) - {"topic", "limit"}:
-            raise ValueError("unsupported knowledge.search argument")
-        topic = args.get("topic")
-        limit = args.get("limit", 20)
-        if not isinstance(topic, str) or len(topic) > 120:
-            raise ValueError("topic must be a string of at most 120 characters")
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
-            raise ValueError("limit must be an integer between 1 and 50")
-        # Unverified AI/system observations are never supplied as trusted context.
+        if set(args) - {'topic', 'limit'}: raise ValueError('unsupported knowledge.search argument')
+        topic, limit = args.get('topic'), args.get('limit', 20)
+        if not isinstance(topic, str) or len(topic) > 120: raise ValueError('topic must be a string of at most 120 characters')
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50: raise ValueError('limit must be an integer between 1 and 50')
         return knowledge.search(topic, verified_only=True, limit=limit)
-
     def report_generate(args: dict[str, Any]) -> dict[str, Any]:
-        no_arguments(args)
-        metrics = [item.__dict__ for item in scorecard.snapshot()]
-        stats = knowledge_stats({})
-        return build_report(
-            snapshot=system_snapshot({}),
-            agent_metrics=metrics,
-            findings=[{
-                "title": "Knowledge ledger",
-                "description": (
-                    f"{stats['unverified']} unverified; {stats['verified']} verified; "
-                    f"{stats['rejected']} rejected"
-                ),
-            }],
-        )
+        no_arguments(args); return build_report(snapshot=system_snapshot({}), agent_metrics=[x.__dict__ for x in scorecard.snapshot()], findings=[{'title': 'Knowledge ledger', 'description': str(knowledge_stats({}))}])
+    for spec in (
+        SkillSpec('system.snapshot', 'Collect read-only platform, CPU, memory and disk metadata.', callers, system_snapshot, 'read-only'),
+        SkillSpec('knowledge.search', 'Search verified evidence only; unverified entries are excluded.', ('ANALYST','AUDITOR','HUMAN','MCP'), knowledge_search, 'read-only'),
+        SkillSpec('knowledge.stats', 'Read verified, unverified and rejected evidence counts.', callers, knowledge_stats, 'read-only'),
+        SkillSpec('report.generate', 'Build a system, agent and evidence report.', ('HUMAN','SYSTEM','MCP'), report_generate, 'read-only'),
+    ): registry.register(spec)
 
-    registry.register(SkillSpec(
-        "system.snapshot", "Collect read-only platform, CPU, memory and disk metadata.",
-        callers, system_snapshot
-    ))
-    registry.register(SkillSpec(
-        "knowledge.search", "Search verified evidence only; unverified entries are excluded.",
-        ("ANALYST", "AUDITOR", "HUMAN", "MCP"), knowledge_search
-    ))
-    registry.register(SkillSpec(
-        "knowledge.stats", "Read counts for verified, unverified and rejected evidence.",
-        callers, knowledge_stats
-    ))
-    registry.register(SkillSpec(
-        "report.generate", "Build a JSON-compatible system, agent and evidence report.",
-        ("HUMAN", "SYSTEM", "MCP"), report_generate
-    ))
+    def role_skill_handler(agent: str, skill_name: str, description: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+        def run(args: dict[str, Any]) -> dict[str, Any]:
+            if set(args) - {'subject', 'evidence', 'context'}: raise ValueError('unsupported skill arguments')
+            subject = args.get('subject', '')
+            evidence = args.get('evidence', [])
+            context = args.get('context', {})
+            if not isinstance(subject, str) or len(subject) > 500: raise ValueError('subject must be a string up to 500 characters')
+            if not isinstance(evidence, list) or len(evidence) > 30 or any(not isinstance(x, str) or len(x) > 2000 for x in evidence): raise ValueError('evidence must be up to 30 strings of at most 2000 characters')
+            if not isinstance(context, dict) or len(context) > 20: raise ValueError('context must be an object with at most 20 fields')
+            return {'agent': agent, 'skill': skill_name, 'objective': description, 'subject': subject, 'evidence_received': evidence, 'context': context, 'result_type': 'structured_advisory', 'limitations': ['Uses only supplied input; does not claim external checks.', 'Does not execute commands, change files, approve actions or bypass human authorization.']}
+        return run
+    registry.register(SkillSpec('scout.host.inventory', 'Enumerate available host identity and platform metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.host.inventory', 'Enumerate available host identity and platform metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.os.fingerprint', 'Identify operating system family and version evidence.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.os.fingerprint', 'Identify operating system family and version evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.kernel.fingerprint', 'Record kernel identity and reported version.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.kernel.fingerprint', 'Record kernel identity and reported version.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.cpu.inventory', 'Collect processor count and available CPU metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.cpu.inventory', 'Collect processor count and available CPU metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.memory.inventory', 'Collect total and available memory metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.memory.inventory', 'Collect total and available memory metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.disk.inventory', 'Collect filesystem capacity and free-space metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.disk.inventory', 'Collect filesystem capacity and free-space metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.filesystem.map', 'Map permitted filesystem paths and metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.filesystem.map', 'Map permitted filesystem paths and metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.mount.inventory', 'Inspect mounted filesystem metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.mount.inventory', 'Inspect mounted filesystem metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.network.interface.inventory', 'List network interface metadata without probing.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.network.interface.inventory', 'List network interface metadata without probing.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.route.snapshot', 'Read routing-table evidence when a supported source exists.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.route.snapshot', 'Read routing-table evidence when a supported source exists.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.dns.configuration', 'Inspect configured DNS resolver metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.dns.configuration', 'Inspect configured DNS resolver metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.process.inventory', 'Collect process metadata from approved read-only sources.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.process.inventory', 'Collect process metadata from approved read-only sources.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.service.inventory', 'Collect service state from supported read-only sources.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.service.inventory', 'Collect service state from supported read-only sources.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.port.observation', 'Record supplied listening-port observations; no active scanning.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.port.observation', 'Record supplied listening-port observations; no active scanning.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.package.inventory', 'Collect installed package inventory from supported package managers.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.package.inventory', 'Collect installed package inventory from supported package managers.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.runtime.inventory', 'Identify language runtimes and versions.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.runtime.inventory', 'Identify language runtimes and versions.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.container.inventory', 'Inspect container metadata without controlling the daemon.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.container.inventory', 'Inspect container metadata without controlling the daemon.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.virtualization.detection', 'Identify reported virtual-machine/container environment.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.virtualization.detection', 'Identify reported virtual-machine/container environment.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.environment.snapshot', 'Collect allow-listed non-secret environment metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.environment.snapshot', 'Collect allow-listed non-secret environment metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.config.file.discovery', 'Locate configured files within an explicitly supplied safe scope.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.config.file.discovery', 'Locate configured files within an explicitly supplied safe scope.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.config.metadata', 'Record file metadata without exposing secret contents.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.config.metadata', 'Record file metadata without exposing secret contents.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.log.source.discovery', 'Identify available log sources and time coverage.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.log.source.discovery', 'Identify available log sources and time coverage.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.log.excerpt.capture', 'Normalize bounded user-supplied log excerpts.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.log.excerpt.capture', 'Normalize bounded user-supplied log excerpts.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.error.signature.capture', 'Extract error signatures from supplied text.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.error.signature.capture', 'Extract error signatures from supplied text.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.crash.artifact.inventory', 'Inventory supplied crash-dump metadata without executing artifacts.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.crash.artifact.inventory', 'Inventory supplied crash-dump metadata without executing artifacts.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.hardware.health.snapshot', 'Record health metrics supplied by supported sensors.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.hardware.health.snapshot', 'Record health metrics supplied by supported sensors.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.battery.snapshot', 'Record battery metadata where supported.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.battery.snapshot', 'Record battery metadata where supported.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.thermal.snapshot', 'Record temperature readings only when supplied by a trusted source.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.thermal.snapshot', 'Record temperature readings only when supplied by a trusted source.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.security.control.inventory', 'Record reported firewall and security-control status.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.security.control.inventory', 'Record reported firewall and security-control status.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.firewall.rule.inventory', 'Summarize supplied firewall rule metadata read-only.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.firewall.rule.inventory', 'Summarize supplied firewall rule metadata read-only.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.user.account.inventory', 'Record non-sensitive local account metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.user.account.inventory', 'Record non-sensitive local account metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.permission.snapshot', 'Inspect permissions for explicitly scoped paths.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.permission.snapshot', 'Inspect permissions for explicitly scoped paths.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.certificate.inventory', 'Record certificate metadata without private keys.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.certificate.inventory', 'Record certificate metadata without private keys.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.tls.endpoint.observation', 'Normalize supplied TLS handshake/certificate observations.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.tls.endpoint.observation', 'Normalize supplied TLS handshake/certificate observations.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.http.endpoint.observation', 'Record supplied HTTP status/header observations.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.http.endpoint.observation', 'Record supplied HTTP status/header observations.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.api.health.observation', 'Normalize supplied API health-check results.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.api.health.observation', 'Normalize supplied API health-check results.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.database.metadata.observation', 'Record non-secret database version and health metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.database.metadata.observation', 'Record non-secret database version and health metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.backup.inventory', 'Inventory backup metadata without reading protected payloads.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.backup.inventory', 'Inventory backup metadata without reading protected payloads.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.scheduled.task.inventory', 'Record scheduled-task metadata without modifying schedules.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.scheduled.task.inventory', 'Record scheduled-task metadata without modifying schedules.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.startup.item.inventory', 'Inventory startup entries read-only.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.startup.item.inventory', 'Inventory startup entries read-only.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.resource.pressure.snapshot', 'Summarize CPU, memory and disk pressure observations.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.resource.pressure.snapshot', 'Summarize CPU, memory and disk pressure observations.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.dependency.inventory', 'Collect application dependency names and versions.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.dependency.inventory', 'Collect application dependency names and versions.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.application.inventory', 'Record installed application metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.application.inventory', 'Record installed application metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.configuration.drift.capture', 'Capture supplied configuration differences.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.configuration.drift.capture', 'Capture supplied configuration differences.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.change.artifact.inventory', 'Inventory supplied deployment/change metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.change.artifact.inventory', 'Inventory supplied deployment/change metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.event.timeline.capture', 'Normalize timestamped events into a timeline.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.event.timeline.capture', 'Normalize timestamped events into a timeline.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.evidence.provenance.capture', 'Attach source, timestamp and collection-method metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.evidence.provenance.capture', 'Attach source, timestamp and collection-method metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.diagnostic.gap.detection', 'Identify missing fields in a supplied diagnostic record.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.diagnostic.gap.detection', 'Identify missing fields in a supplied diagnostic record.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.scope.boundary.check', 'Check whether requested observations stay inside declared scope.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.scope.boundary.check', 'Check whether requested observations stay inside declared scope.'), 'structured-advisory'))
+    registry.register(SkillSpec('scout.collection.completeness', 'Measure completeness of supplied inspection results.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.collection.completeness', 'Measure completeness of supplied inspection results.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.evidence.classification', 'Separate observations, claims, hypotheses and unknowns.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.evidence.classification', 'Separate observations, claims, hypotheses and unknowns.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.source.reliability', 'Assess source provenance and reliability limitations.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.source.reliability', 'Assess source provenance and reliability limitations.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.confidence.scoring', 'Assign bounded confidence from supplied evidence.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.confidence.scoring', 'Assign bounded confidence from supplied evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.hypothesis.generation', 'Generate testable hypotheses without presenting them as facts.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.hypothesis.generation', 'Generate testable hypotheses without presenting them as facts.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.hypothesis.testing', 'Compare hypotheses against supplied supporting and contradicting evidence.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.hypothesis.testing', 'Compare hypotheses against supplied supporting and contradicting evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.root.cause.analysis', 'Build evidence-linked candidate causal chains.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.root.cause.analysis', 'Build evidence-linked candidate causal chains.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.causal.dependency.mapping', 'Map dependencies and causal relationships.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.causal.dependency.mapping', 'Map dependencies and causal relationships.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.temporal.correlation', 'Correlate timestamped events and note temporal uncertainty.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.temporal.correlation', 'Correlate timestamped events and note temporal uncertainty.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.cross.source.correlation', 'Compare observations across independent sources.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.cross.source.correlation', 'Compare observations across independent sources.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.anomaly.detection', 'Identify outliers against supplied baselines.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.anomaly.detection', 'Identify outliers against supplied baselines.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.trend.analysis', 'Analyze ordered measurements for trends.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.trend.analysis', 'Analyze ordered measurements for trends.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.baseline.deviation', 'Compare supplied measurements to a declared baseline.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.baseline.deviation', 'Compare supplied measurements to a declared baseline.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.performance.bottleneck', 'Rank candidate resource bottlenecks from measurements.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.performance.bottleneck', 'Rank candidate resource bottlenecks from measurements.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.capacity.forecasting', 'Estimate simple capacity trajectory from supplied data.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.capacity.forecasting', 'Estimate simple capacity trajectory from supplied data.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.availability.analysis', 'Analyze supplied uptime and downtime intervals.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.availability.analysis', 'Analyze supplied uptime and downtime intervals.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.failure.pattern.analysis', 'Group recurring error signatures.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.failure.pattern.analysis', 'Group recurring error signatures.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.log.sequence.analysis', 'Interpret ordered log events without inventing missing events.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.log.sequence.analysis', 'Interpret ordered log events without inventing missing events.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.dependency.impact.analysis', 'Assess downstream impact of a reported dependency issue.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.dependency.impact.analysis', 'Assess downstream impact of a reported dependency issue.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.network.path.analysis', 'Analyze supplied network path evidence.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.network.path.analysis', 'Analyze supplied network path evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.dns.failure.analysis', 'Classify supplied DNS failure evidence.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.dns.failure.analysis', 'Classify supplied DNS failure evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.tls.risk.analysis', 'Assess supplied TLS/certificate observations.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.tls.risk.analysis', 'Assess supplied TLS/certificate observations.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.permission.risk.analysis', 'Identify excessive or inconsistent permissions from evidence.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.permission.risk.analysis', 'Identify excessive or inconsistent permissions from evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.configuration.risk.analysis', 'Assess supplied configuration settings against stated policy.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.configuration.risk.analysis', 'Assess supplied configuration settings against stated policy.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.vulnerability.triage', 'Triage supplied vulnerability findings without claiming exploit validation.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.vulnerability.triage', 'Triage supplied vulnerability findings without claiming exploit validation.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.patch.gap.analysis', 'Compare installed versions to supplied approved baselines.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.patch.gap.analysis', 'Compare installed versions to supplied approved baselines.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.dependency.risk.analysis', 'Assess dependency age and known-risk data supplied by trusted sources.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.dependency.risk.analysis', 'Assess dependency age and known-risk data supplied by trusted sources.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.secret.exposure.detection', 'Detect likely secret patterns in supplied text and redact matches.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.secret.exposure.detection', 'Detect likely secret patterns in supplied text and redact matches.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.privacy.impact.analysis', 'Identify personal-data exposure in a supplied workflow description.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.privacy.impact.analysis', 'Identify personal-data exposure in a supplied workflow description.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.threat.modeling', 'Enumerate assets, trust boundaries and plausible threats.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.threat.modeling', 'Enumerate assets, trust boundaries and plausible threats.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.attack.surface.analysis', 'Map exposed surfaces from supplied inventory.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.attack.surface.analysis', 'Map exposed surfaces from supplied inventory.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.misconfiguration.analysis', 'Compare supplied settings with explicit security expectations.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.misconfiguration.analysis', 'Compare supplied settings with explicit security expectations.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.backup.recoverability.analysis', 'Assess backup evidence and restoration gaps.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.backup.recoverability.analysis', 'Assess backup evidence and restoration gaps.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.rollback.feasibility.analysis', 'Evaluate rollback completeness and dependencies.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.rollback.feasibility.analysis', 'Evaluate rollback completeness and dependencies.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.change.risk.estimation', 'Estimate change risk from scope, privilege and reversibility.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.change.risk.estimation', 'Estimate change risk from scope, privilege and reversibility.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.blast.radius.analysis', 'Estimate affected components from supplied dependency graph.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.blast.radius.analysis', 'Estimate affected components from supplied dependency graph.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.business.impact.analysis', 'Translate technical findings into bounded operational impact.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.business.impact.analysis', 'Translate technical findings into bounded operational impact.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.compliance.gap.analysis', 'Compare supplied controls to an explicitly named control set.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.compliance.gap.analysis', 'Compare supplied controls to an explicitly named control set.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.policy.conflict.detection', 'Identify conflicts between supplied requirements.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.policy.conflict.detection', 'Identify conflicts between supplied requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.incident.severity.classification', 'Classify incident severity using declared criteria.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.incident.severity.classification', 'Classify incident severity using declared criteria.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.incident.timeline.reconstruction', 'Reconstruct a timeline from supplied timestamped evidence.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.incident.timeline.reconstruction', 'Reconstruct a timeline from supplied timestamped evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.false.positive.assessment', 'Identify evidence that may contradict or weaken a finding.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.false.positive.assessment', 'Identify evidence that may contradict or weaken a finding.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.alternative.explanations', 'Generate competing explanations for an observation.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.alternative.explanations', 'Generate competing explanations for an observation.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.uncertainty.register', 'List assumptions, unknowns and evidence gaps.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.uncertainty.register', 'List assumptions, unknowns and evidence gaps.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.evidence.gap.analysis', 'Specify evidence needed to validate a conclusion.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.evidence.gap.analysis', 'Specify evidence needed to validate a conclusion.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.recommendation.ranking', 'Rank supplied recommendations by risk and impact.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.recommendation.ranking', 'Rank supplied recommendations by risk and impact.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.cost.benefit.analysis', 'Compare estimated costs and benefits supplied by the operator.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.cost.benefit.analysis', 'Compare estimated costs and benefits supplied by the operator.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.remediation.priority', 'Prioritize issues by severity, confidence and exposure.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.remediation.priority', 'Prioritize issues by severity, confidence and exposure.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.cross.agent.consistency', 'Compare agent findings for contradictions and overlap.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.cross.agent.consistency', 'Compare agent findings for contradictions and overlap.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.report.synthesis', 'Synthesize findings while preserving provenance and uncertainty.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.report.synthesis', 'Synthesize findings while preserving provenance and uncertainty.'), 'structured-advisory'))
+    registry.register(SkillSpec('analyst.decision.record.analysis', 'Review prior decisions for rationale and unresolved risk.', ('ANALYST', 'HUMAN'), role_skill_handler('ANALYST', 'analyst.decision.record.analysis', 'Review prior decisions for rationale and unresolved risk.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.repair.scope.definition', 'Define exact target, boundaries and exclusions for a proposed change.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.repair.scope.definition', 'Define exact target, boundaries and exclusions for a proposed change.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.precondition.design', 'Specify checks required before a proposed repair.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.precondition.design', 'Specify checks required before a proposed repair.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.postcondition.design', 'Specify observable success conditions after a repair.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.postcondition.design', 'Specify observable success conditions after a repair.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.action.allowlist.match', 'Match a repair concept only to an existing registered action.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.action.allowlist.match', 'Match a repair concept only to an existing registered action.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.parameter.schema.design', 'Define strict typed parameters for an approved action.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.parameter.schema.design', 'Define strict typed parameters for an approved action.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.path.safety.validation', 'Validate path scope and traversal constraints in a proposed plan.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.path.safety.validation', 'Validate path scope and traversal constraints in a proposed plan.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.symlink.safety.review', 'Identify symlink escape concerns in a proposed filesystem operation.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.symlink.safety.review', 'Identify symlink escape concerns in a proposed filesystem operation.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.privilege.minimization', 'Reduce requested privileges to the minimum justified level.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.privilege.minimization', 'Reduce requested privileges to the minimum justified level.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.backup.strategy.design', 'Specify backup scope, integrity check and retention requirements.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.backup.strategy.design', 'Specify backup scope, integrity check and retention requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.rollback.plan.design', 'Design a reversible rollback sequence for a proposed change.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.rollback.plan.design', 'Design a reversible rollback sequence for a proposed change.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.idempotency.review', 'Assess whether repeating an action has safe, predictable results.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.idempotency.review', 'Assess whether repeating an action has safe, predictable results.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.dry.run.plan', 'Produce a non-mutating preview of proposed effects.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.dry.run.plan', 'Produce a non-mutating preview of proposed effects.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.change.diff.review', 'Review a supplied diff for scope and unintended changes.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.change.diff.review', 'Review a supplied diff for scope and unintended changes.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.configuration.patch.design', 'Draft a bounded configuration change without applying it.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.configuration.patch.design', 'Draft a bounded configuration change without applying it.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.dependency.update.plan', 'Plan version changes against supplied compatibility constraints.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.dependency.update.plan', 'Plan version changes against supplied compatibility constraints.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.package.repair.plan', 'Prepare a package-manager repair plan without invoking it.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.package.repair.plan', 'Prepare a package-manager repair plan without invoking it.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.service.recovery.plan', 'Prepare service recovery steps; execution remains separately gated.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.service.recovery.plan', 'Prepare service recovery steps; execution remains separately gated.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.disk.cleanup.plan', 'Identify candidate cleanup targets; never delete files automatically.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.disk.cleanup.plan', 'Identify candidate cleanup targets; never delete files automatically.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.permission.correction.plan', 'Propose least-privilege permission corrections.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.permission.correction.plan', 'Propose least-privilege permission corrections.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.network.config.plan', 'Draft a network configuration plan with recovery safeguards.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.network.config.plan', 'Draft a network configuration plan with recovery safeguards.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.firewall.change.plan', 'Draft narrowly scoped firewall changes with lockout prevention.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.firewall.change.plan', 'Draft narrowly scoped firewall changes with lockout prevention.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.certificate.renewal.plan', 'Prepare certificate renewal steps without accessing private keys.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.certificate.renewal.plan', 'Prepare certificate renewal steps without accessing private keys.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.backup.restore.plan', 'Plan restoration and integrity verification.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.backup.restore.plan', 'Plan restoration and integrity verification.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.database.migration.plan', 'Design migration and rollback steps for supplied schema changes.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.database.migration.plan', 'Design migration and rollback steps for supplied schema changes.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.data.validation.plan', 'Define integrity checks before and after a data change.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.data.validation.plan', 'Define integrity checks before and after a data change.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.deployment.plan', 'Prepare staged deployment steps and gates.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.deployment.plan', 'Prepare staged deployment steps and gates.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.release.rollback.plan', 'Prepare release rollback steps and validation.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.release.rollback.plan', 'Prepare release rollback steps and validation.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.container.hardening.plan', 'Propose container hardening settings within declared constraints.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.container.hardening.plan', 'Propose container hardening settings within declared constraints.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.resource.tuning.plan', 'Prepare resource tuning recommendations from supplied metrics.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.resource.tuning.plan', 'Prepare resource tuning recommendations from supplied metrics.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.log.rotation.plan', 'Plan bounded log rotation with retention and recovery checks.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.log.rotation.plan', 'Plan bounded log rotation with retention and recovery checks.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.monitoring.rule.plan', 'Draft monitoring thresholds and alert conditions.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.monitoring.rule.plan', 'Draft monitoring thresholds and alert conditions.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.alert.routing.plan', 'Design alert routing and escalation policy.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.alert.routing.plan', 'Design alert routing and escalation policy.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.test.case.generation', 'Generate test cases for a proposed repair and its failure modes.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.test.case.generation', 'Generate test cases for a proposed repair and its failure modes.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.regression.test.plan', 'Select regression checks from declared behavior.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.regression.test.plan', 'Select regression checks from declared behavior.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.compatibility.check.plan', 'Define platform and version compatibility checks.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.compatibility.check.plan', 'Define platform and version compatibility checks.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.failure.injection.plan', 'Design safe, isolated failure tests; never run them.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.failure.injection.plan', 'Design safe, isolated failure tests; never run them.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.resource.limit.plan', 'Specify CPU, memory, time and disk bounds for an operation.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.resource.limit.plan', 'Specify CPU, memory, time and disk bounds for an operation.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.network.isolation.plan', 'Specify network-denied execution requirements.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.network.isolation.plan', 'Specify network-denied execution requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.sandbox.profile.design', 'Specify least-privilege sandbox constraints for a registered action.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.sandbox.profile.design', 'Specify least-privilege sandbox constraints for a registered action.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.secret.handling.plan', 'Ensure secrets are referenced securely and never embedded in plans.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.secret.handling.plan', 'Ensure secrets are referenced securely and never embedded in plans.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.maintenance.window.plan', 'Specify maintenance timing, availability and abort criteria.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.maintenance.window.plan', 'Specify maintenance timing, availability and abort criteria.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.user.impact.mitigation', 'Plan communications and impact minimization.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.user.impact.mitigation', 'Plan communications and impact minimization.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.change.order.drafting', 'Produce a structured change record for review.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.change.order.drafting', 'Produce a structured change record for review.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.repair.dependency.order', 'Order proposed changes by prerequisite dependencies.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.repair.dependency.order', 'Order proposed changes by prerequisite dependencies.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.conflict.detection.plan', 'Identify conflicts with concurrent changes.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.conflict.detection.plan', 'Identify conflicts with concurrent changes.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.recovery.point.design', 'Define recovery-point and recovery-time requirements.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.recovery.point.design', 'Define recovery-point and recovery-time requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.verification.checklist', 'Create observable verification steps for a proposed repair.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.verification.checklist', 'Create observable verification steps for a proposed repair.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.execution.gate.checklist', 'Check required human approval and policy gates; cannot grant them.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.execution.gate.checklist', 'Check required human approval and policy gates; cannot grant them.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.repair.package.manifest', 'Build a manifest of exact allow-listed actions and parameters.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.repair.package.manifest', 'Build a manifest of exact allow-listed actions and parameters.'), 'structured-advisory'))
+    registry.register(SkillSpec('fixer.manual.fallback.plan', 'Prepare a safe manual fallback if automated repair is unavailable.', ('FIXER', 'HUMAN'), role_skill_handler('FIXER', 'fixer.manual.fallback.plan', 'Prepare a safe manual fallback if automated repair is unavailable.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.proposal.integrity.check', 'Verify proposal identity and canonical content hash.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.proposal.integrity.check', 'Verify proposal identity and canonical content hash.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.approval.binding.check', 'Check approval is bound to exact proposal, target and scope.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.approval.binding.check', 'Check approval is bound to exact proposal, target and scope.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.approval.expiry.check', 'Check whether a supplied approval has expired.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.approval.expiry.check', 'Check whether a supplied approval has expired.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.single.use.approval.check', 'Verify that an approval has not already been consumed.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.single.use.approval.check', 'Verify that an approval has not already been consumed.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.approval.actor.check', 'Verify approver identity against supplied authorization policy.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.approval.actor.check', 'Verify approver identity against supplied authorization policy.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.human.consent.check', 'Confirm a separate explicit human authorization record exists.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.human.consent.check', 'Confirm a separate explicit human authorization record exists.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.execution.scope.audit', 'Compare proposed action scope with declared target boundaries.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.execution.scope.audit', 'Compare proposed action scope with declared target boundaries.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.action.allowlist.audit', 'Reject actions absent from the versioned action registry.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.action.allowlist.audit', 'Reject actions absent from the versioned action registry.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.parameter.schema.audit', 'Check action parameters against strict schemas.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.parameter.schema.audit', 'Check action parameters against strict schemas.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.shell.injection.audit', 'Detect shell or command-string execution paths in a proposal.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.shell.injection.audit', 'Detect shell or command-string execution paths in a proposal.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.code.injection.audit', 'Detect dynamic code/eval/import execution proposals.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.code.injection.audit', 'Detect dynamic code/eval/import execution proposals.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.privilege.audit', 'Review privilege requests for least-privilege compliance.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.privilege.audit', 'Review privilege requests for least-privilege compliance.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.sandbox.isolation.audit', 'Check required isolation constraints and fail-closed behavior.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.sandbox.isolation.audit', 'Check required isolation constraints and fail-closed behavior.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.network.policy.audit', 'Check network access is denied unless explicitly justified.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.network.policy.audit', 'Check network access is denied unless explicitly justified.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.filesystem.boundary.audit', 'Check path traversal and mount boundaries.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.filesystem.boundary.audit', 'Check path traversal and mount boundaries.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.symlink.escape.audit', 'Review symlink handling for boundary escape.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.symlink.escape.audit', 'Review symlink handling for boundary escape.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.secret.redaction.audit', 'Check outputs and logs for likely secret disclosure.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.secret.redaction.audit', 'Check outputs and logs for likely secret disclosure.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.backup.presence.audit', 'Check backup evidence and integrity requirements.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.backup.presence.audit', 'Check backup evidence and integrity requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.rollback.completeness.audit', 'Check rollback coverage for each proposed mutation.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.rollback.completeness.audit', 'Check rollback coverage for each proposed mutation.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.irreversible.action.audit', 'Flag destructive or irreversible operations for default denial.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.irreversible.action.audit', 'Flag destructive or irreversible operations for default denial.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.timeout.enforcement.audit', 'Check bounded execution timeout requirements.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.timeout.enforcement.audit', 'Check bounded execution timeout requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.resource.quota.audit', 'Check CPU, memory, disk and process limits.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.resource.quota.audit', 'Check CPU, memory, disk and process limits.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.audit.log.completeness', 'Check required actor, action, target, hash and outcome fields.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.audit.log.completeness', 'Check required actor, action, target, hash and outcome fields.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.evidence.provenance.audit', 'Verify findings retain source and collection metadata.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.evidence.provenance.audit', 'Verify findings retain source and collection metadata.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.finding.traceability.audit', 'Trace conclusions back to concrete evidence.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.finding.traceability.audit', 'Trace conclusions back to concrete evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.confidence.calibration.audit', 'Check confidence is justified by evidence quality.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.confidence.calibration.audit', 'Check confidence is justified by evidence quality.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.hypothesis.label.audit', 'Ensure hypotheses are not represented as confirmed facts.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.hypothesis.label.audit', 'Ensure hypotheses are not represented as confirmed facts.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.false.claim.detection', 'Identify claims of checks or outcomes unsupported by records.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.false.claim.detection', 'Identify claims of checks or outcomes unsupported by records.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.test.coverage.audit', 'Compare changed behavior with supplied test coverage.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.test.coverage.audit', 'Compare changed behavior with supplied test coverage.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.regression.risk.audit', 'Identify likely regressions from supplied change information.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.regression.risk.audit', 'Identify likely regressions from supplied change information.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.dependency.license.audit', 'Review supplied dependency license evidence.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.dependency.license.audit', 'Review supplied dependency license evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.dependency.vulnerability.audit', 'Review supplied dependency vulnerability scan results.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.dependency.vulnerability.audit', 'Review supplied dependency vulnerability scan results.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.configuration.compliance.audit', 'Compare supplied configuration with explicit policies.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.configuration.compliance.audit', 'Compare supplied configuration with explicit policies.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.privacy.compliance.audit', 'Review personal-data handling against supplied requirements.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.privacy.compliance.audit', 'Review personal-data handling against supplied requirements.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.retention.policy.audit', 'Check evidence retention against declared policy.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.retention.policy.audit', 'Check evidence retention against declared policy.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.access.control.audit', 'Review role and caller permissions for least privilege.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.access.control.audit', 'Review role and caller permissions for least privilege.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.mcp.boundary.audit', 'Ensure tool invocation cannot substitute for human consent.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.mcp.boundary.audit', 'Ensure tool invocation cannot substitute for human consent.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.api.authentication.audit', 'Review supplied API authentication design.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.api.authentication.audit', 'Review supplied API authentication design.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.transport.security.audit', 'Review TLS and transport security evidence.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.transport.security.audit', 'Review TLS and transport security evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.monitoring.coverage.audit', 'Check whether critical operations have observable monitoring.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.monitoring.coverage.audit', 'Check whether critical operations have observable monitoring.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.alert.quality.audit', 'Review alert thresholds for missing context and noise.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.alert.quality.audit', 'Review alert thresholds for missing context and noise.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.incident.response.audit', 'Check incident plans include containment, evidence and recovery.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.incident.response.audit', 'Check incident plans include containment, evidence and recovery.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.disaster.recovery.audit', 'Review recovery plans and tested recovery evidence.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.disaster.recovery.audit', 'Review recovery plans and tested recovery evidence.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.change.management.audit', 'Check change record, reviewer and rollback completeness.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.change.management.audit', 'Check change record, reviewer and rollback completeness.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.separation.of.duties.audit', 'Check proposer, approver and executor are distinct as policy requires.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.separation.of.duties.audit', 'Check proposer, approver and executor are distinct as policy requires.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.concurrent.change.audit', 'Review stale-state and concurrent modification safeguards.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.concurrent.change.audit', 'Review stale-state and concurrent modification safeguards.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.post.execution.verification.audit', 'Check supplied postcondition results independently.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.post.execution.verification.audit', 'Check supplied postcondition results independently.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.rollback.verification.audit', 'Check rollback completion evidence and residual risk.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.rollback.verification.audit', 'Check rollback completion evidence and residual risk.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.incident.postmortem.audit', 'Review timeline, root cause, corrective actions and open gaps.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.incident.postmortem.audit', 'Review timeline, root cause, corrective actions and open gaps.'), 'structured-advisory'))
+    registry.register(SkillSpec('auditor.final.release.gate', 'Produce a pass/hold/reject recommendation; never execute or approve.', ('AUDITOR', 'HUMAN'), role_skill_handler('AUDITOR', 'auditor.final.release.gate', 'Produce a pass/hold/reject recommendation; never execute or approve.'), 'structured-advisory'))
     return registry
