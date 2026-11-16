@@ -27,7 +27,7 @@ def build_parser():
 
     sub.add_parser("doctor", help="Run fixed read-only local diagnostics")
     sub.add_parser("sandbox-check", help="Run a fixed diagnostic in the restricted Docker sandbox")
-    sub.add_parser("audit", help="Collect evidence and analyze it with configured AI")
+    sub.add_parser("audit", help="Run all four agents: inspect, analyze, propose and review")
 
     ask = sub.add_parser("ask", help="Ask the configured default AI model")
     ask.add_argument("message", nargs="+")
@@ -52,14 +52,14 @@ async def run(args):
 
         result = run_check("python-version")
         console.print(Panel(
-            result.output or "(no output)",
+            Text(result.output or "(no output)"),
             title=f"Docker sandbox: {result.check_id} — exit {result.exit_code}",
         ))
         return result.exit_code
 
     if args.command == "doctor":
         report = collect_diagnostics()
-        console.print(Panel("AETHER CORE diagnostic report"))
+        console.print(Panel(Text("AETHER CORE diagnostic report")))
         for finding in report.findings:
             console.print(Text(f"{finding.risk.value} {finding.title}: {finding.detail}"))
         return 0
@@ -71,26 +71,27 @@ async def run(args):
         console.print(f"[green]Audit saved:[/] {report.id}")
         console.print(Panel(Text(report.summary), title="SCOUT"))
         console.print(Panel(Text(analysis), title="ANALYST"))
-        console.print(Panel(
-            f"{proposal.title}"\nID: {proposal.id}\n"
+        proposal_text = (
+            f"{proposal.title}\nID: {proposal.id}\n"
             f"SHA-256: {proposal.content_hash()}\nRisk: {proposal.risk.value}\n\n"
-            + "\n".join(f"- {step}" for step in proposal.steps),
-            title="FIXER — Proposal only",
-        ))
+            + "\n".join(f"- {step}" for step in proposal.steps)
+        )
+        console.print(Panel(Text(proposal_text), title="FIXER — Proposal only"))
         console.print(Panel(Text(review["advisory"]), title="AUDITOR — Advisory review"))
         console.print("[yellow]No repair was executed. Human review is required.[/]")
         return 0
 
     if args.command == "plan":
         proposal, review = await Orchestrator(db).plan(" ".join(args.analysis))
-        console.print(Panel(
-            f"[bold]{proposal.title}[/]\nID: {proposal.id}\n"
+        proposal_text = (
+            f"{proposal.title}\nID: {proposal.id}\n"
             f"SHA-256: {proposal.content_hash()}\nRisk: {proposal.risk.value}\n\n"
             + "\n".join(f"- {step}" for step in proposal.steps)
-            + "\n\nThis is a proposal only; no action was executed.",
-            title="FIXER — Remediation proposal",
-        ))
-        console.print(review["message"])
+            + "\n\nThis is a proposal only; no action was executed."
+        )
+        console.print(Panel(Text(proposal_text), title="FIXER — Remediation proposal"))
+        console.print(Text(review["message"]))
+        console.print(Text(review["advisory"]))
         return 0
 
     if args.command == "ask":
@@ -113,13 +114,13 @@ async def run(args):
         if proposal.content_hash() != args.proposal_hash:
             raise ValueError("Proposal hash mismatch; review the current proposal.")
         decision = "approved" if args.command == "approve" else "rejected"
-        console.print(Panel(
-            f"[bold]{proposal.title}[/]\n"
-            f"ID: {proposal.id}\nSHA-256: {proposal.content_hash()}\n"
+        review_text = (
+            f"{proposal.title}\nID: {proposal.id}\n"
+            f"SHA-256: {proposal.content_hash()}\n"
             f"Decision: {decision.upper()}\n"
-            "This records a human decision only. It does not execute repairs.",
-            title="AETHER CORE — Human review",
-        ))
+            "This records a human decision only. It does not execute repairs."
+        )
+        console.print(Panel(Text(review_text), title="AETHER CORE — Human review"))
         expected = f"{decision.upper()} {proposal.id}"
         typed = console.input(f"Type exactly '{expected}' to continue: ")
         if typed != expected:
