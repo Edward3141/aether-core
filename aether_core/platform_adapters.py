@@ -68,7 +68,10 @@ def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
         nonlocal retained_size
         assert process.stdout is not None
         while True:
-            chunk = process.stdout.read(4096)
+            try:
+                chunk = process.stdout.read(4096)
+            except (OSError, ValueError):
+                return
             if not chunk:
                 return
             remaining = _MAX_OUTPUT - retained_size
@@ -104,6 +107,8 @@ def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
     if reader.is_alive() and process.stdout is not None:
         process.stdout.close()
         reader.join(timeout=1)
+    if reader.is_alive():
+        return None
 
     output = b"".join(retained).decode("utf-8", errors="replace")
     if overflow.is_set():
