@@ -9,7 +9,8 @@ from aether_core.repair_actions import (
 
 
 def _execute_as_human(db, plan, root, monkeypatch, response=None):
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    from types import SimpleNamespace
+    monkeypatch.setattr("aether_core.repair_actions.sys.stdin", SimpleNamespace(isatty=lambda: True))
     expected = f"AUTHORIZE {plan['id']} {plan['sha256']}"
     monkeypatch.setattr("builtins.input", lambda _prompt: expected if response is None else response)
     return Executor(db).execute_after_human_prompt(
@@ -170,7 +171,7 @@ def test_executor_requests_exact_human_authorization_before_execution(tmp_path, 
     assert (tmp_path / "approved").is_dir()
 
 
-def test_executor_rejection_never_changes_files(tmp_path):
+def test_executor_rejection_never_changes_files(tmp_path, monkeypatch):
     from aether_core.repair_actions import Executor
 
     db = Database(tmp_path / "test.db")
@@ -196,7 +197,8 @@ def test_direct_execution_api_is_disabled(tmp_path):
 def test_executor_refuses_noninteractive_authorization(tmp_path, monkeypatch):
     db = Database(tmp_path / "test.db")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "blocked"}, tmp_path)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    from types import SimpleNamespace
+    monkeypatch.setattr("aether_core.repair_actions.sys.stdin", SimpleNamespace(isatty=lambda: False))
     with pytest.raises(PermissionError, match="live interactive terminal"):
         Executor(db).execute_after_human_prompt(plan["id"], plan["sha256"], "human", tmp_path)
     assert not (tmp_path / "blocked").exists()
