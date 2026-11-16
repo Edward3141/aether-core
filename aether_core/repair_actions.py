@@ -447,10 +447,10 @@ def _execute_approved_plan(
     action_id = claim["action_id"]
     schema, handler = _HANDLERS[action_id]
     try:
-        consumed_contract = json.loads(claim["params_json"])
-        if consumed_contract.get("handler_version") != _HANDLER_VERSIONS[action_id]:
-            raise ValueError("Action handler version changed after authorization.")
-        params = schema.model_validate(consumed_contract["parameters"])
+        # Re-check the exact contract returned by the atomic database claim. This
+        # closes the gap between pre-claim validation and the first filesystem side effect.
+        _consumed_version, consumed_parameters = _validated_plan_contract(claim)
+        params = schema.model_validate(consumed_parameters)
         result = handler(
             params, Path(claim["target_root"]), claim["target_identity"]
         )
