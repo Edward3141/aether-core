@@ -340,10 +340,11 @@ class Executor:
     def bind_capabilities(self, registry) -> None:
         self.capability_registry = registry
 
-    def available_capabilities(self) -> list[dict]:
+    def available_capabilities(self, system: str | None = None) -> list[dict]:
+        """List executor capabilities for the host, or an explicitly inspected platform."""
         if self.capability_registry is None:
             return []
-        return self.capability_registry.list_for_role("EXECUTOR")
+        return self.capability_registry.list_for_role("EXECUTOR", system)
 
     def execute_after_human_prompt(
         self, plan_id: str, digest: str, approved_by: str, root: Path,
