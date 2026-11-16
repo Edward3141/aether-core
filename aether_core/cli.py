@@ -49,6 +49,18 @@ def build_parser():
     plan = sub.add_parser("plan", help="Generate a non-executable remediation proposal")
     plan.add_argument("analysis", nargs="+", help="Analysis text to turn into a proposal")
 
+    action_plan = sub.add_parser("action-plan", help="Create a reviewable plan for one allow-listed local action")
+    action_plan.add_argument("action", choices=("ensure_directory",))
+    action_plan.add_argument("--params", required=True, help="JSON parameters for the exact action")
+    action_plan.add_argument("--root", required=True, help="Existing directory that bounds the change")
+    action_plan.add_argument("--minutes", type=int, default=10)
+
+    execute_action = sub.add_parser("execute-action", help="Human-authorize and execute one exact action plan")
+    execute_action.add_argument("plan_id")
+    execute_action.add_argument("--hash", required=True, dest="plan_hash")
+    execute_action.add_argument("--by", required=True, dest="approved_by")
+    execute_action.add_argument("--root", required=True, help="Same target root shown in the plan")
+
     for decision in ("approve", "reject"):
         action = sub.add_parser(decision, help=f"Record a human {decision} decision for a proposal")
         action.add_argument("proposal_id")
@@ -61,6 +73,45 @@ def build_parser():
 
 async def run(args):
     db = Database(database_path())
+    if args.command == "action-plan":
+        from pathlib import Path
+        from .repair_actions import create_action_plan
+        try:
+            parameters = json.loads(args.params)
+        except json.JSONDecodeError as exc:
+            raise ValueError("--params must be a JSON object") from exc
+        if not isinstance(parameters, dict):
+            raise ValueError("--params must be a JSON object")
+        plan = create_action_plan(db, args.action, parameters, Path(args.root), args.minutes)
+        console.print(Panel(Text(json.dumps(plan, ensure_ascii=False, indent=2)),
+                            title="AETHER CORE — Action plan; NOT YET AUTHORIZED"))
+        console.print("[yellow]No change was made. Review every field before authorizing.[/]")
+        return 0
+
+    if args.command == "execute-action":
+        from pathlib import Path
+        from .repair_actions import approve_and_execute
+        plan = db.get_action_plan(args.plan_id)
+        if plan is None:
+            raise ValueError("Action plan not found.")
+        if plan["digest"] != args.plan_hash:
+            raise ValueError("Action plan hash mismatch.")
+        console.print(Panel(Text(json.dumps({
+            "plan_id": plan["id"], "action": plan["action_id"],
+            "parameters": json.loads(plan["params_json"]),
+            "target_root": plan["target_root"], "sha256": plan["digest"],
+            "status": plan["status"], "expires_at": plan["created_at"],
+        }, ensure_ascii=False, indent=2)), title="EXACT ACTION REQUIRING HUMAN APPROVAL"))
+        expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
+        typed = console.input(f"Type exactly '{expected}' to authorize this one action: ")
+        if typed != expected:
+            console.print("[yellow]Cancelled. No action was executed.[/]")
+            return 2
+        result = approve_and_execute(db, plan["id"], args.plan_hash,
+                                     args.approved_by, Path(args.root))
+        console.print(Panel(Text(result.detail), title=f"Execution: {result.status}"))
+        return 0
+
     if args.command == "sandbox-check":
         from .sandbox.docker_runner import run_check
         result = run_check("python-version")
