@@ -12,8 +12,9 @@ Neither action executes shell commands, scripts, arbitrary model text, or progra
 
 1. The agent workflow may recommend an action, but cannot execute it.
 2. A human creates/reviews a typed action plan with `action-plan`.
-3. The plan binds the action ID, validated parameters, canonical target root,
-   host identity and SHA-256 digest.
+3. The plan binds the action ID, explicit handler version, validated parameters,
+   canonical target root, host identity and SHA-256 digest. The contract is checked
+   before the human prompt, again after the prompt, and again after the atomic claim.
 4. A human runs `execute-action`, reviews the complete plan and types the
    exact authorization phrase containing the plan ID and digest.
 5. SQLite atomically consumes the pending plan before any filesystem side
