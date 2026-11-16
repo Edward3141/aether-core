@@ -2,7 +2,7 @@
 
 ## Unreleased
 - Formalized the five-component architecture: four intelligence agents (SCOUT, ANALYST, FIXER, AUDITOR) plus the human-supervised 05 EXECUTOR.
-- Added a single-use, hash-bound human authorization path for the typed `ensure_directory` repair on supported POSIX systems, with independent postcondition checks and cleanup of newly created empty directories when a later step fails.
+- Added single-use, hash-bound human authorization for typed `ensure_directory` and `create_empty_file` repairs on supported POSIX systems, with independent postcondition checks and rollback limited to exact newly created objects when a later step fails.
 - Added a role- and platform-scoped capability catalog; command references are metadata only and are never executed.
 - Connected SCOUT, ANALYST, FIXER and AUDITOR into the CLI and MCP full workflow.
 - Added model-assisted SCOUT summaries and AUDITOR proposal reviews with fail-safe advisory behavior.
