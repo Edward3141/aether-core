@@ -56,39 +56,118 @@ class SkillRegistry:
 def build_builtin_registry(knowledge: KnowledgeStore, scorecard: AgentScorecard) -> SkillRegistry:
     """Create core services and 200 role-specific skills (50 per agent)."""
     registry = SkillRegistry()
-    callers = ('SCOUT', 'ANALYST', 'FIXER', 'AUDITOR', 'HUMAN', 'SYSTEM', 'MCP')
-    def no_arguments(args: dict[str, Any]) -> None:
-        if args: raise ValueError('this skill does not accept arguments')
-    def system_snapshot(args: dict[str, Any]) -> dict[str, Any]:
-        no_arguments(args); return collect_snapshot().to_dict()
-    def knowledge_stats(args: dict[str, Any]) -> dict[str, int]:
-        no_arguments(args); return {key: knowledge.count(status=key) for key in ('unverified', 'verified', 'rejected')} | {'total': knowledge.count()}
-    def knowledge_search(args: dict[str, Any]) -> list[dict[str, Any]]:
-        if set(args) - {'topic', 'limit'}: raise ValueError('unsupported knowledge.search argument')
-        topic, limit = args.get('topic'), args.get('limit', 20)
-        if not isinstance(topic, str) or len(topic) > 120: raise ValueError('topic must be a string of at most 120 characters')
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50: raise ValueError('limit must be an integer between 1 and 50')
-        return knowledge.search(topic, verified_only=True, limit=limit)
-    def report_generate(args: dict[str, Any]) -> dict[str, Any]:
-        no_arguments(args); return build_report(snapshot=system_snapshot({}), agent_metrics=[x.__dict__ for x in scorecard.snapshot()], findings=[{'title': 'Knowledge ledger', 'description': str(knowledge_stats({}))}])
-    for spec in (
-        SkillSpec('system.snapshot', 'Collect read-only platform, CPU, memory and disk metadata.', callers, system_snapshot, 'read-only'),
-        SkillSpec('knowledge.search', 'Search verified evidence only; unverified entries are excluded.', ('ANALYST','AUDITOR','HUMAN','MCP'), knowledge_search, 'read-only'),
-        SkillSpec('knowledge.stats', 'Read verified, unverified and rejected evidence counts.', callers, knowledge_stats, 'read-only'),
-        SkillSpec('report.generate', 'Build a system, agent and evidence report.', ('HUMAN','SYSTEM','MCP'), report_generate, 'read-only'),
-    ): registry.register(spec)
+    callers = ("SCOUT", "ANALYST", "FIXER", "AUDITOR", "HUMAN", "SYSTEM", "MCP")
 
-    def role_skill_handler(agent: str, skill_name: str, description: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    def no_arguments(args: dict[str, Any]) -> None:
+        if args:
+            raise ValueError("this skill does not accept arguments")
+
+    def system_snapshot(args: dict[str, Any]) -> dict[str, Any]:
+        no_arguments(args)
+        return collect_snapshot().to_dict()
+
+    def knowledge_stats(args: dict[str, Any]) -> dict[str, int]:
+        no_arguments(args)
+        counts = {
+            key: knowledge.count(status=key)
+            for key in ("unverified", "verified", "rejected")
+        }
+        counts["total"] = knowledge.count()
+        return counts
+
+    def knowledge_search(args: dict[str, Any]) -> list[dict[str, Any]]:
+        if set(args) - {"topic", "limit"}:
+            raise ValueError("unsupported knowledge.search argument")
+        topic = args.get("topic")
+        limit = args.get("limit", 20)
+        if not isinstance(topic, str) or len(topic) > 120:
+            raise ValueError("topic must be a string of at most 120 characters")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("limit must be an integer between 1 and 50")
+        return knowledge.search(topic, verified_only=True, limit=limit)
+
+    def report_generate(args: dict[str, Any]) -> dict[str, Any]:
+        no_arguments(args)
+        return build_report(
+            snapshot=system_snapshot({}),
+            agent_metrics=[x.__dict__ for x in scorecard.snapshot()],
+            findings=[
+                {
+                    "title": "Knowledge ledger",
+                    "description": str(knowledge_stats({})),
+                }
+            ],
+        )
+
+    for spec in (
+        SkillSpec(
+            "system.snapshot",
+            "Collect read-only platform, CPU, memory and disk metadata.",
+            callers,
+            system_snapshot,
+            "read-only",
+        ),
+        SkillSpec(
+            "knowledge.search",
+            "Search verified evidence only; unverified entries are excluded.",
+            ("ANALYST", "AUDITOR", "HUMAN", "MCP"),
+            knowledge_search,
+            "read-only",
+        ),
+        SkillSpec(
+            "knowledge.stats",
+            "Read verified, unverified and rejected evidence counts.",
+            callers,
+            knowledge_stats,
+            "read-only",
+        ),
+        SkillSpec(
+            "report.generate",
+            "Build a system, agent and evidence report.",
+            ("HUMAN", "SYSTEM", "MCP"),
+            report_generate,
+            "read-only",
+        ),
+    ):
+        registry.register(spec)
+
+    def role_skill_handler(
+        agent: str, skill_name: str, description: str
+    ) -> Callable[[dict[str, Any]], dict[str, Any]]:
         def run(args: dict[str, Any]) -> dict[str, Any]:
-            if set(args) - {'subject', 'evidence', 'context'}: raise ValueError('unsupported skill arguments')
-            subject = args.get('subject', '')
-            evidence = args.get('evidence', [])
-            context = args.get('context', {})
-            if not isinstance(subject, str) or len(subject) > 500: raise ValueError('subject must be a string up to 500 characters')
-            if not isinstance(evidence, list) or len(evidence) > 30 or any(not isinstance(x, str) or len(x) > 2000 for x in evidence): raise ValueError('evidence must be up to 30 strings of at most 2000 characters')
-            if not isinstance(context, dict) or len(context) > 20: raise ValueError('context must be an object with at most 20 fields')
-            return {'agent': agent, 'skill': skill_name, 'objective': description, 'subject': subject, 'evidence_received': evidence, 'context': context, 'result_type': 'structured_advisory', 'limitations': ['Uses only supplied input; does not claim external checks.', 'does not execute commands, change files, approve actions or bypass human authorization.']}
+            if set(args) - {"subject", "evidence", "context"}:
+                raise ValueError("unsupported skill arguments")
+            subject = args.get("subject", "")
+            evidence = args.get("evidence", [])
+            context = args.get("context", {})
+            if not isinstance(subject, str) or len(subject) > 500:
+                raise ValueError("subject must be a string up to 500 characters")
+            if (
+                not isinstance(evidence, list)
+                or len(evidence) > 30
+                or any(not isinstance(x, str) or len(x) > 2000 for x in evidence)
+            ):
+                raise ValueError(
+                    "evidence must be up to 30 strings of at most 2000 characters"
+                )
+            if not isinstance(context, dict) or len(context) > 20:
+                raise ValueError("context must be an object with at most 20 fields")
+            return {
+                "agent": agent,
+                "skill": skill_name,
+                "objective": description,
+                "subject": subject,
+                "evidence_received": evidence,
+                "context": context,
+                "result_type": "structured_advisory",
+                "limitations": [
+                    "Uses only supplied input; does not claim external checks.",
+                    "does not execute commands, change files, approve actions or bypass human authorization.",
+                ],
+            }
+
         return run
+
     registry.register(SkillSpec('scout.host.inventory', 'Enumerate available host identity and platform metadata.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.host.inventory', 'Enumerate available host identity and platform metadata.'), 'structured-advisory'))
     registry.register(SkillSpec('scout.os.fingerprint', 'Identify operating system family and version evidence.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.os.fingerprint', 'Identify operating system family and version evidence.'), 'structured-advisory'))
     registry.register(SkillSpec('scout.kernel.fingerprint', 'Record kernel identity and reported version.', ('SCOUT', 'HUMAN'), role_skill_handler('SCOUT', 'scout.kernel.fingerprint', 'Record kernel identity and reported version.'), 'structured-advisory'))
