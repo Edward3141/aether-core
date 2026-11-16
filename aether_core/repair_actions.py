@@ -78,6 +78,11 @@ def _mkdir_at(path: str, *, mode: int, dir_fd: int) -> None:
     os.mkdir(path, mode=mode, dir_fd=dir_fd)
 
 
+def _mkdir_at(name: str, parent_descriptor: int) -> None:
+    """Small seam for deterministic failure-injection tests."""
+    os.mkdir(name, mode=0o755, dir_fd=parent_descriptor)
+
+
 def _ensure_directory(
     params: EnsureDirectoryParams, root: Path, expected_target_identity: str | None = None
 ) -> ActionResult:
