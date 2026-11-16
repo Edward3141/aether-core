@@ -4,17 +4,35 @@ from mcp.server.fastmcp import FastMCP
 from ..config import database_path
 from ..database import Database
 from ..diagnostics import collect_diagnostics
+from ..orchestrator import Orchestrator
 
 mcp = FastMCP("AETHER CORE")
 db = Database(database_path())
 
 
 @mcp.tool()
-def auditar_sistema() -> dict:
-    """Collect fixed, read-only diagnostics and persist the report."""
+def recopilar_diagnosticos() -> dict:
+    """Collect fixed, read-only local diagnostics without invoking AI."""
     report = collect_diagnostics()
     db.save_audit(report)
     return report.model_dump(mode="json")
+
+
+@mcp.tool()
+async def ejecutar_flujo_completo() -> dict:
+    """Run SCOUT, ANALYST, FIXER and AUDITOR; this never executes repairs."""
+    workflow = Orchestrator(db)
+    report, analysis = await workflow.audit()
+    proposal, review = await workflow.plan(analysis)
+    return {
+        "audit": report.model_dump(mode="json"),
+        "analysis": analysis,
+        "proposal": proposal.model_dump(mode="json"),
+        "proposal_sha256": proposal.content_hash(),
+        "auditor_review": review,
+        "execution_allowed": False,
+        "human_approval_required": True,
+    }
 
 
 @mcp.tool()
@@ -41,6 +59,17 @@ def consultar_propuesta(proposal_id: str) -> dict:
         "sha256": proposal.content_hash(),
         "execution_allowed": False,
     }
+
+
+@mcp.tool()
+def consultar_decisiones(proposal_id: str) -> list[dict]:
+    """List human approval/rejection records for a proposal; does not change them."""
+    if not proposal_id or len(proposal_id) > 80:
+        raise ValueError("Invalid proposal ID.")
+    return [
+        record.model_dump(mode="json")
+        for record in db.list_approvals(proposal_id)
+    ]
 
 
 def main():
