@@ -81,7 +81,7 @@ _CATALOG = (
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("stat", "findmnt"), "macos": ("stat", "mount"),
                 "windows": ("Get-Acl", "Get-Item")},
-               "read_only", implementation_status="metadata_only"),
+               "read_only", implementation_status="partial_read_only", notes="Only bounded home-directory metadata is inspected; no recursive filesystem scan is performed."),
     Capability("packages.inspect", "packages", "Inventory installed software and package managers",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("rpm -qa", "dpkg-query -W"), "macos": ("pkgutil --pkgs", "brew list"),
