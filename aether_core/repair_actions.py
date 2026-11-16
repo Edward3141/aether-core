@@ -24,7 +24,7 @@ class EnsureDirectoryParams(BaseModel):
     def validate_relative_path(cls, value: str) -> str:
         normalized = value.replace("\\", "/")
         path = PurePosixPath(normalized)
-        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        if path.is_absolute() or any(part in {"", ".", ".."} for part in normalized.split("/")):
             raise ValueError("Path must be a clean relative path without traversal.")
         if ":" in normalized or "\\x00" in normalized or len(path.parts) > 8:
             raise ValueError("Path contains forbidden characters or is too deep.")
