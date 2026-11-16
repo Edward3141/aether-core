@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from aether_core.database import Database
 from aether_core.repair_actions import (
-    EnsureDirectoryParams, Executor, approve_and_execute, create_action_plan,
+    CreateEmptyFileParams, EnsureDirectoryParams, Executor, approve_and_execute, create_action_plan,
     _supports_race_safe_directory_creation, _execute_approved_plan,
 )
 
@@ -353,4 +353,74 @@ def test_internal_execution_entrypoint_requires_live_human_confirmation(tmp_path
 
 def test_runtime_registered_action_inventory_matches_cli_contract():
     from aether_core.repair_actions import registered_action_ids
-    assert registered_action_ids() == ("ensure_directory",)
+    assert registered_action_ids() == ("create_empty_file", "ensure_directory")
+
+
+@pytest.mark.parametrize("path", ["../outside", "/tmp/outside", "C:/Windows/System32", "a/../../outside", ""])
+def test_create_empty_file_contract_rejects_unsafe_paths(path):
+    with pytest.raises(ValidationError):
+        CreateEmptyFileParams(relative_path=path)
+
+
+def test_create_empty_file_requires_approval_is_exclusive_and_verifies(tmp_path, monkeypatch):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(
+        db, "create_empty_file", {"relative_path": "reports/placeholder.txt"}, tmp_path
+    )
+    if not _supports_race_safe_directory_creation():
+        with pytest.raises(PermissionError, match="race-safe file APIs"):
+            _execute_as_human(db, plan, tmp_path, monkeypatch)
+        assert not (tmp_path / "reports").exists()
+        return
+
+    (tmp_path / "reports").mkdir()
+    plan = create_action_plan(
+        db, "create_empty_file", {"relative_path": "reports/placeholder.txt"}, tmp_path
+    )
+    result = _execute_as_human(db, plan, tmp_path, monkeypatch)
+    target = tmp_path / "reports" / "placeholder.txt"
+    assert result.status == "succeeded"
+    assert target.is_file()
+    assert target.read_bytes() == b""
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert len(result.verification) == 3
+    with pytest.raises(PermissionError, match="not awaiting authorization"):
+        _execute_as_human(db, plan, tmp_path, monkeypatch)
+
+
+def test_create_empty_file_never_overwrites_existing_file(tmp_path, monkeypatch):
+    db = Database(tmp_path / "test.db")
+    target = tmp_path / "keep.txt"
+    target.write_text("preserve", encoding="utf-8")
+    plan = create_action_plan(
+        db, "create_empty_file", {"relative_path": "keep.txt"}, tmp_path
+    )
+    if not _supports_race_safe_directory_creation():
+        with pytest.raises(PermissionError, match="race-safe file APIs"):
+            _execute_as_human(db, plan, tmp_path, monkeypatch)
+    else:
+        with pytest.raises(FileExistsError):
+            _execute_as_human(db, plan, tmp_path, monkeypatch)
+    assert target.read_text(encoding="utf-8") == "preserve"
+
+
+def test_create_empty_file_rejects_symlink_parent(tmp_path, monkeypatch):
+    db = Database(tmp_path / "test.db")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "root"
+    root.mkdir()
+    try:
+        (root / "link").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlink creation is unavailable on this runner.")
+    plan = create_action_plan(
+        db, "create_empty_file", {"relative_path": "link/escape.txt"}, root
+    )
+    if not _supports_race_safe_directory_creation():
+        with pytest.raises(PermissionError, match="race-safe file APIs"):
+            _execute_as_human(db, plan, root, monkeypatch)
+    else:
+        with pytest.raises(PermissionError):
+            _execute_as_human(db, plan, root, monkeypatch)
+    assert list(outside.iterdir()) == []
