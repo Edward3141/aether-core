@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from aether_core.database import Database
 from aether_core.repair_actions import (
     EnsureDirectoryParams, Executor, approve_and_execute, create_action_plan,
+    _supports_race_safe_directory_creation,
 )
 
 
@@ -39,6 +40,13 @@ def test_human_approval_executes_exact_allowlisted_action_once(tmp_path, monkeyp
     db = Database(tmp_path / "test.db")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "cache"}, tmp_path)
     assert not (tmp_path / "cache").exists()
+    if not _supports_race_safe_directory_creation():
+        with pytest.raises(PermissionError, match="race-safe directory APIs"):
+            _execute_as_human(db, plan, tmp_path, monkeypatch)
+        assert not (tmp_path / "cache").exists()
+        assert db.get_action_plan(plan["id"])["status"] == "failed"
+        return
+
     result = _execute_as_human(db, plan, tmp_path, monkeypatch)
     assert result.status == "succeeded"
     assert (tmp_path / "cache").is_dir()
@@ -75,8 +83,12 @@ def test_symlink_escape_is_rejected(tmp_path, monkeypatch):
     except OSError:
         pytest.skip("Symlink creation is unavailable on this runner.")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "link/escape"}, root)
-    with pytest.raises(PermissionError, match="Symlink"):
-        _execute_as_human(db, plan, root, monkeypatch)
+    if not _supports_race_safe_directory_creation():
+        with pytest.raises(PermissionError, match="race-safe directory APIs"):
+            _execute_as_human(db, plan, root, monkeypatch)
+    else:
+        with pytest.raises(PermissionError, match="Symlink"):
+            _execute_as_human(db, plan, root, monkeypatch)
     assert not (outside / "escape").exists()
 
 
@@ -164,6 +176,15 @@ def test_executor_requests_exact_human_authorization_before_execution(tmp_path, 
         lambda _prompt: f"AUTHORIZE {plan['id']} {plan['sha256']}",
     )
     seen = []
+    if not _supports_race_safe_directory_creation():
+        with pytest.raises(PermissionError, match="race-safe directory APIs"):
+            Executor(db).execute_after_human_prompt(
+                plan["id"], plan["sha256"], "human", tmp_path, seen.append
+            )
+        assert seen[0]["action"] == "ensure_directory"
+        assert not (tmp_path / "approved").exists()
+        return
+
     result = Executor(db).execute_after_human_prompt(
         plan["id"], plan["sha256"], "human", tmp_path, seen.append
     )
@@ -238,3 +259,14 @@ def test_action_plan_can_be_consumed_only_once_under_concurrency(tmp_path):
     assert len(failures) == 1
     assert db.get_action_plan(plan["id"])["status"] == "consumed"
     assert not (tmp_path / "race").exists()
+
+
+
+def test_directory_action_fails_closed_without_safe_descriptor_apis(tmp_path):
+    from aether_core.repair_actions import _ensure_directory
+
+    if _supports_race_safe_directory_creation():
+        pytest.skip("This platform provides the required safe descriptor APIs.")
+    with pytest.raises(PermissionError, match="race-safe directory APIs"):
+        _ensure_directory(EnsureDirectoryParams(relative_path="blocked"), tmp_path)
+    assert not (tmp_path / "blocked").exists()
