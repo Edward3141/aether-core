@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
@@ -26,7 +27,7 @@ class EnsureDirectoryParams(BaseModel):
         path = PurePosixPath(normalized)
         if path.is_absolute() or any(part in {"", ".", ".."} for part in normalized.split("/")):
             raise ValueError("Path must be a clean relative path without traversal.")
-        if ":" in normalized or "\\x00" in normalized or len(path.parts) > 8:
+        if ":" in normalized or "\x00" in normalized or len(path.parts) > 8:
             raise ValueError("Path contains forbidden characters or is too deep.")
         return normalized
 
@@ -150,3 +151,42 @@ def approve_and_execute(db: Database, plan_id: str, digest: str,
             json.dumps({"error_type": type(exc).__name__, "detail": str(exc)[:500]}))
         raise
 
+
+
+
+class Executor:
+    """Final execution role: requests explicit human authorization for each action."""
+
+    def __init__(self, database: Database):
+        self.database = database
+
+    def execute_after_human_prompt(
+        self, plan_id: str, digest: str, approved_by: str, root: Path,
+        ask_human: Callable[[dict], str],
+    ) -> ActionResult | None:
+        plan = self.database.get_action_plan(plan_id)
+        if plan is None:
+            raise ValueError("Action plan not found.")
+        if plan["digest"] != digest:
+            raise ValueError("Action plan hash mismatch.")
+        if plan["status"] != "pending":
+            raise PermissionError("Action plan is not awaiting authorization.")
+        review = {
+            "plan_id": plan["id"],
+            "action": plan["action_id"],
+            "parameters": json.loads(plan["params_json"]),
+            "target_root": plan["target_root"],
+            "target_identity": plan["target_identity"],
+            "sha256": plan["digest"],
+            "expires_at": plan["expires_at"],
+            "status": plan["status"],
+            "effects": "Executes only the registered typed action; no shell or arbitrary scripts.",
+        }
+        response = ask_human(review)
+        expected = f"AUTHORIZE {plan['id']} {plan['digest']}"
+        if response != expected:
+            return None
+        # Re-check state, expiry, target and digest inside the execution gate.
+        return approve_and_execute(
+            self.database, plan["id"], plan["digest"], approved_by, root
+        )
