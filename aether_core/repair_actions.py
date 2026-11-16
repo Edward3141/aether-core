@@ -2,6 +2,7 @@
 
 Only typed operations are supported. Model-generated shell or script text is never run.
 """
+import errno
 import hashlib
 import json
 import os
@@ -87,7 +88,12 @@ def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult
                 # Existing entries are accepted only if they can be opened as a
                 # real directory without following a symlink.
                 pass
-            child = os.open(part, flags, dir_fd=descriptor)
+            try:
+                child = os.open(part, flags, dir_fd=descriptor)
+            except OSError as exc:
+                if exc.errno == errno.ELOOP:
+                    raise PermissionError("Symlink traversal is not allowed.") from exc
+                raise
             os.close(descriptor)
             descriptor = child
     finally:
