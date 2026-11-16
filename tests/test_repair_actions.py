@@ -93,3 +93,46 @@ def test_plan_is_bound_to_original_parameters(tmp_path):
         approve_and_execute(db, plan["id"], plan["sha256"], "human", tmp_path)
     assert not (tmp_path / "tampered").exists()
     assert not (tmp_path / "safe").exists()
+
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_turns_fixer_action_into_unapproved_plan(tmp_path, monkeypatch):
+    from aether_core import orchestrator
+    from aether_core.models import RemediationProposal, RepairActionRequest
+
+    proposal = RemediationProposal(
+        title="Prepare cache directory",
+        rationale="The application cache directory is missing.",
+        steps=["Create the application cache directory."],
+        actions=[RepairActionRequest(
+            action_id="ensure_directory",
+            parameters={"relative_path": "cache"},
+        )],
+    )
+
+    async def fake_propose(self, analysis):
+        return proposal
+
+    async def fake_review(self, value):
+        return {
+            "proposal_id": value.id,
+            "sha256": value.content_hash(),
+            "execution_allowed": False,
+            "human_approval_required": True,
+            "advisory": "Reviewed; human authorization still required.",
+            "message": "Human review required.",
+        }
+
+    monkeypatch.setattr(orchestrator.Fixer, "propose", fake_propose)
+    monkeypatch.setattr(orchestrator.Auditor, "review", fake_review)
+    db = Database(tmp_path / "state" / "aether.sqlite3")
+    workflow = orchestrator.Orchestrator(db)
+    saved, review = await workflow.plan("missing cache")
+    assert saved.id == proposal.id
+    assert len(review["action_plans"]) == 1
+    action_plan = review["action_plans"][0]
+    assert action_plan["action_id"] == "ensure_directory"
+    assert action_plan["target_root"] == str(db.path.parent.resolve())
+    assert db.get_action_plan(action_plan["id"])["status"] == "pending"
+    assert not (db.path.parent / "cache").exists()
