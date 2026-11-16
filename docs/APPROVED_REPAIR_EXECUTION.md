@@ -21,6 +21,8 @@ or caller-supplied programs.
    digest, wrong target, expired/consumed plan, unknown action or symlink
    traversal is rejected.
 
+Agent proposals may include typed action requests. The orchestrator validates each request against the local allow-list and creates a pending action plan rooted only in the application's data directory. The CLI and MCP workflow return these plans for review; neither an agent nor an MCP call can approve them.
+
 ## CLI example
 
 ```bash
