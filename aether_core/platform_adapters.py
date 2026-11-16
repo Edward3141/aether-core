@@ -10,6 +10,7 @@ import platform
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from .models import Finding, Risk
@@ -31,29 +32,80 @@ def _redact(value: str) -> str:
 
 
 def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
-    """Run one fixed application-owned probe with a bounded environment and timeout."""
+    """Run a fixed probe while bounding retained output and wall-clock time."""
     if not argv:
         return None
     executable = shutil.which(argv[0])
     if executable is None:
         return None
+
+    environment = {"PATH": os.defpath, "LC_ALL": "C", "LANG": "C"}
+    if os.name == "nt":
+        for key in ("SYSTEMROOT", "WINDIR"):
+            value = os.environ.get(key)
+            if value:
+                environment[key] = value
+
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             [executable, *argv[1:]],
             stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=_TIMEOUT_SECONDS,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=False,
             shell=False,
             close_fds=True,
-            env={"PATH": os.defpath, "LC_ALL": "C", "LANG": "C"},
+            env=environment,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
         return None
-    return result.returncode, _redact(result.stdout + "\n" + result.stderr)
+
+    retained: list[bytes] = []
+    retained_size = 0
+    overflow = threading.Event()
+
+    def drain_output() -> None:
+        nonlocal retained_size
+        assert process.stdout is not None
+        while True:
+            chunk = process.stdout.read(4096)
+            if not chunk:
+                return
+            remaining = _MAX_OUTPUT - retained_size
+            if remaining > 0:
+                kept = chunk[:remaining]
+                retained.append(kept)
+                retained_size += len(kept)
+            if len(chunk) > remaining:
+                overflow.set()
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                # Continue draining until the killed process closes its pipe.
+
+    reader = threading.Thread(target=drain_output, name="aether-probe-output", daemon=True)
+    reader.start()
+    try:
+        return_code = process.wait(timeout=_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait()
+        reader.join(timeout=1)
+        return None
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+    reader.join(timeout=1)
+
+    output = b"".join(retained).decode("utf-8", errors="replace")
+    if overflow.is_set():
+        output += "\\n[OUTPUT TRUNCATED: probe exceeded the configured output limit]"
+        return 125, _redact(output)
+    return return_code, _redact(output)
 
 
 def _finding(title: str, detail: str, evidence: list[str], risk: Risk = Risk.INFO) -> Finding:
