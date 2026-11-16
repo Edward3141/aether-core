@@ -1,4 +1,5 @@
 """Workflow coordinator with integrated intelligence telemetry and evidence memory."""
+import json
 from .agents import Analyst, Auditor, Fixer, Scout
 from .database import Database
 from .models import AuditReport, RemediationProposal
@@ -32,7 +33,20 @@ class Orchestrator:
                     evidence={"risk": finding.risk.value, "hypothesis": finding.hypothesis,
                               "confidence": finding.confidence, "evidence": finding.evidence},
                 )
-            analysis = await self.analyst.analyze(report)
+            # Give ANALYST only human-verified historical references; label them as context,
+            # never as current machine evidence or executable instructions.
+            verified_context = self.skills.execute(
+                "knowledge.search", caller="ANALYST",
+                arguments={"topic": "", "limit": 10},
+            )
+            analysis_report = report
+            if verified_context:
+                analysis_report = report.model_copy(deep=True)
+                analysis_report.summary += (
+                    "\nVerified historical context (reference only; not current evidence): "
+                    + json.dumps(verified_context, ensure_ascii=False)
+                )
+            analysis = await self.analyst.analyze(analysis_report)
             self.scorecard.record("ANALYST", success=True)
             return report, analysis
         except Exception:
