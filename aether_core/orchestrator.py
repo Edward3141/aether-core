@@ -1,7 +1,8 @@
 """Workflow coordinator. Created by Edward Tejada."""
-from .agents import Scout, Analyst, Fixer, Auditor
+from .agents import Analyst, Auditor, Fixer, Scout
 from .database import Database
 from .models import AuditReport, RemediationProposal
+
 
 class Orchestrator:
     def __init__(self, database: Database):
@@ -18,4 +19,5 @@ class Orchestrator:
     async def plan(self, analysis: str) -> tuple[RemediationProposal, dict]:
         proposal = await self.fixer.propose(analysis)
         self.db.save_proposal(proposal)
-        return proposal, self.auditor.review(proposal)
+        review = await self.auditor.review(proposal)
+        return proposal, review
