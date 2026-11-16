@@ -37,10 +37,9 @@ class EnsureDirectoryParams(BaseModel):
 
 
 
-class CreateFileParams(BaseModel):
+class CreateEmptyFileParams(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     relative_path: str = Field(min_length=1, max_length=240)
-    content: str = Field(max_length=16384)
 
     @field_validator("relative_path")
     @classmethod
@@ -52,7 +51,6 @@ class CreateFileParams(BaseModel):
         if ":" in normalized or "\x00" in normalized or len(path.parts) > 8:
             raise ValueError("Path contains forbidden characters or is too deep.")
         return normalized
-
 
 class ActionResult(BaseModel):
     action_id: str
@@ -201,7 +199,7 @@ def _ensure_directory(
 
 
 def _create_file(
-    params: CreateFileParams, root: Path, expected_target_identity: str | None = None
+    params: CreateEmptyFileParams, root: Path, expected_target_identity: str | None = None
 ) -> ActionResult:
     """Create one new UTF-8 file without overwriting existing content or following links."""
     if not _supports_race_safe_directory_creation() or os.unlink not in os.supports_dir_fd:
@@ -234,13 +232,6 @@ def _create_file(
         if not stat.S_ISREG(metadata.st_mode):
             raise PermissionError("Created target is not a regular file.")
         created_identity = (metadata.st_dev, metadata.st_ino)
-        data = params.content.encode("utf-8")
-        offset = 0
-        while offset < len(data):
-            written = os.write(file_descriptor, data[offset:])
-            if written <= 0:
-                raise OSError("File write made no progress.")
-            offset += written
         os.fsync(file_descriptor)
         named = os.stat(filename, dir_fd=parent, follow_symlinks=False)
         if (
@@ -273,17 +264,17 @@ def _create_file(
             os.close(descriptor)
 
     return ActionResult(
-        action_id="create_file",
+        action_id="create_empty_file",
         status="executed",
         detail=(
             "New UTF-8 file created without overwrite using no-follow descriptors; "
-            f"path={params.relative_path}; bytes={len(params.content.encode('utf-8'))}."
+            f"path={params.relative_path}; empty file created with mode 0600."
         ),
     )
 
 _HANDLERS = {
     "ensure_directory": (EnsureDirectoryParams, _ensure_directory),
-    "create_file": (CreateFileParams, _create_file),
+    "create_empty_file": (CreateEmptyFileParams, _create_file),
 }
 
 
