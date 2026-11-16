@@ -93,3 +93,14 @@ def test_catalog_discloses_implementation_status_instead_of_implying_all_are_liv
     summary = registry.summary("Linux")
     assert summary["implementation_status"]["repair.execute"] == "partial_one_action"
     assert summary["implementation_status"]["backup.plan"] == "not_implemented"
+
+
+def test_orchestrator_binds_fifth_component_executor_capability(tmp_path):
+    from aether_core.database import Database
+    from aether_core.orchestrator import Orchestrator
+
+    workflow = Orchestrator(Database(tmp_path / "state.sqlite3"))
+    executor_capabilities = workflow.executor.available_capabilities()
+    repair = next(item for item in executor_capabilities if item["capability_id"] == "repair.execute")
+    assert repair["implementation_status"] == "partial_one_action"
+    assert repair["executable"] is False
