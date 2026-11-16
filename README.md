@@ -25,6 +25,10 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 - Explicit CLI confirmation before recording an approval or rejection. Decisions are records only and do not trigger repairs.
 - GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
 
+## Human-authorized repair execution
+
+The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). AETHER CORE is intended to execute only registered, schema-validated repair actions after explicit approval of the exact proposal hash. Approval must be one-time, expire, and never authorize arbitrary model-generated shell commands. This execution capability is **not implemented yet** in the current release.
+
 ## Safety limitations
 
 This is an early development release, not an autonomous repair product. No repair executor is included. The Docker sandbox currently runs only one fixed, read-only version check; it is not a general-purpose command runner. Approval records are audit evidence only; they do not authorize or trigger code execution. MCP tools are read-only. This project has not undergone an independent security audit.
@@ -85,7 +89,7 @@ The MCP interface is read-only. Do not expose an unauthenticated MCP server to a
 
 ## Roadmap
 
-Broader allow-listed diagnostics, provider capability detection, per-agent integration tests, richer approval UX, rollback verification and security review. Roadmap items are not implemented features.
+A versioned repair-action registry, one-time approval consumption, a fail-closed executor, reversible OS-specific handlers, rollback verification, failure-injection tests and security review. Roadmap items are not implemented features.
 
 ## License
 
