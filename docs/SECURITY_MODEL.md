@@ -12,7 +12,7 @@ AETHER CORE has four intelligence agents and one supervised execution engine:
 - **04 — AUDITOR:** reviews proposal scope and safety but cannot authorize a change.
 - **05 — EXECUTOR:** the only component permitted to invoke a registered repair handler, and only after the human explicitly authorizes each exact action.
 
-Model output, diagnostic strings, MCP inputs and stored JSON are untrusted data. Model-generated shell commands are never executed. An MCP call, skill invocation, proposal review or AUDITOR recommendation is not human consent.
+Model output, diagnostic strings, MCP inputs and stored JSON are untrusted data. Model-generated shell commands are never executed. An MCP call, skill invocation, proposal review or AUDITOR recommendation is not human consent. Execution plans bind a manually versioned handler contract and revalidate it before review, after the human prompt and after atomic consumption.
 
 ## Approval record semantics
 
