@@ -152,3 +152,67 @@ def test_sandbox_uses_isolated_fixed_command(monkeypatch):
     assert "--privileged" not in captured["command"]
     assert captured["kwargs"]["shell"] is False
     assert captured["kwargs"]["timeout"] == 15
+
+
+
+@pytest.mark.asyncio
+async def test_scout_uses_model_only_for_labelled_summary(monkeypatch):
+    from aether_core import agents
+
+    async def fake_model(system_prompt, user_prompt, agent=None):
+        assert agent == "SCOUT"
+        assert "diagnostic" in user_prompt.lower()
+        return "Two fixed checks completed."
+
+    monkeypatch.setattr(agents, "ask_model", fake_model)
+    report = await agents.Scout().inspect()
+    assert report.findings
+    assert report.summary.startswith("AI-generated summary")
+
+
+@pytest.mark.asyncio
+async def test_scout_falls_back_when_model_unavailable(monkeypatch):
+    from aether_core import agents
+
+    async def unavailable(*args, **kwargs):
+        raise RuntimeError("provider offline")
+
+    monkeypatch.setattr(agents, "ask_model", unavailable)
+    report = await agents.Scout().inspect()
+    assert report.findings
+    assert "AI summary unavailable" in report.summary
+    assert "provider offline" not in report.summary
+
+
+@pytest.mark.asyncio
+async def test_auditor_model_review_never_grants_execution(monkeypatch):
+    from aether_core import agents
+
+    async def fake_model(system_prompt, user_prompt, agent=None):
+        assert agent == "AUDITOR"
+        return "Consider adding stronger rollback verification."
+
+    monkeypatch.setattr(agents, "ask_model", fake_model)
+    proposal = RemediationProposal(
+        title="Review", rationale="Evidence review", steps=["Inspect logs"]
+    )
+    review = await agents.Auditor().review(proposal)
+    assert review["advisory"].startswith("Consider adding")
+    assert review["execution_allowed"] is False
+    assert review["human_approval_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_auditor_fails_closed_when_model_unavailable(monkeypatch):
+    from aether_core import agents
+
+    async def unavailable(*args, **kwargs):
+        raise RuntimeError("provider offline")
+
+    monkeypatch.setattr(agents, "ask_model", unavailable)
+    proposal = RemediationProposal(
+        title="Review", rationale="Evidence review", steps=["Inspect logs"]
+    )
+    review = await agents.Auditor().review(proposal)
+    assert review["execution_allowed"] is False
+    assert "manual review is required" in review["advisory"]
