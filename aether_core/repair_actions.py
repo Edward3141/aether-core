@@ -340,4 +340,3 @@ class Executor:
         return _execute_approved_plan(
             self.database, plan_id, digest, approved_by, root, present_review
         )
-        )
