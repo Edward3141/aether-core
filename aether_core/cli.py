@@ -31,7 +31,9 @@ def build_parser():
     sub.add_parser("sandbox-check", help="Run a fixed diagnostic in the restricted Docker sandbox")
     sub.add_parser("audit", help="Run all four agents and update integrated intelligence services")
     sub.add_parser("status", help="Show integrated system snapshot, agent metrics and knowledge ledger")
-    sub.add_parser("skills", help="List the built-in, policy-controlled skills")
+    skills = sub.add_parser("skills", help="List the built-in, policy-controlled skills")
+    skills.add_argument("--agent", choices=("SCOUT", "ANALYST", "FIXER", "AUDITOR"),
+                        help="Show only one specialist's 50 skills")
 
     skill = sub.add_parser("skill", help="Execute one registered read-only skill")
     skill.add_argument("name", help="Exact registered skill name")
@@ -76,7 +78,8 @@ async def run(args):
     if args.command in {"status", "report", "skills", "skill"}:
         workflow = Orchestrator(db)
         if args.command == "skills":
-            console.print(Text(json.dumps(workflow.skills.list(), ensure_ascii=False, indent=2)))
+            catalog = workflow.skills.for_agent(args.agent) if args.agent else workflow.skills.list()
+            console.print(Text(json.dumps(catalog, ensure_ascii=False, indent=2)))
             return 0
         if args.command == "skill":
             try:
