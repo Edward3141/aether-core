@@ -53,7 +53,8 @@ def test_wrong_hash_and_wrong_target_do_not_execute(tmp_path, monkeypatch):
     root.mkdir()
     other.mkdir()
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "cache"}, root)
-    with pytest.raises(ValueError, match="digest mismatch"):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    with pytest.raises(ValueError, match="hash mismatch"):
         Executor(db).execute_after_human_prompt(plan["id"], "0" * 64, "human", root)
     with pytest.raises(PermissionError, match="target"):
         _execute_as_human(db, plan, other, monkeypatch)
