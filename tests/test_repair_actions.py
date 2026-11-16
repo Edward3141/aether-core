@@ -54,7 +54,8 @@ def test_wrong_hash_and_wrong_target_do_not_execute(tmp_path, monkeypatch):
     root.mkdir()
     other.mkdir()
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "cache"}, root)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    from types import SimpleNamespace
+    monkeypatch.setattr("aether_core.repair_actions.sys.stdin", SimpleNamespace(isatty=lambda: True))
     with pytest.raises(ValueError, match="hash mismatch"):
         Executor(db).execute_after_human_prompt(plan["id"], "0" * 64, "human", root)
     with pytest.raises(PermissionError, match="target"):
@@ -156,7 +157,8 @@ def test_executor_requests_exact_human_authorization_before_execution(tmp_path, 
 
     db = Database(tmp_path / "test.db")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "approved"}, tmp_path)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    from types import SimpleNamespace
+    monkeypatch.setattr("aether_core.repair_actions.sys.stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr(
         "builtins.input",
         lambda _prompt: f"AUTHORIZE {plan['id']} {plan['sha256']}",
@@ -176,7 +178,8 @@ def test_executor_rejection_never_changes_files(tmp_path, monkeypatch):
 
     db = Database(tmp_path / "test.db")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "denied"}, tmp_path)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    from types import SimpleNamespace
+    monkeypatch.setattr("aether_core.repair_actions.sys.stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr("builtins.input", lambda _prompt: "NO")
     result = Executor(db).execute_after_human_prompt(
         plan["id"], plan["sha256"], "human", tmp_path,
