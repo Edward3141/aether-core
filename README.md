@@ -7,12 +7,13 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 
 **Created by Edward Tejada** · MIT License
 
-## Four integrated agents
+## Four specialist agents and a supervised Executor
 
 - **SCOUT** — fixed, read-only system diagnostics plus an AI-generated summary explicitly labelled as advisory.
 - **ANALYST** — evidence review, uncertainty and risk classification.
-- **FIXER** — remediation proposals with backup and rollback guidance; never executes repairs.
-- **AUDITOR** — AI-assisted proposal review, proposal hash checks and human oversight records. Its model can never grant execution permission.
+- **FIXER** — remediation proposals with typed, allow-listed action requests and backup/rollback guidance; never executes repairs.
+- **AUDITOR** — AI-assisted proposal review, scope/risk checks and human oversight records. It cannot grant execution permission.
+- **EXECUTOR (final stage)** — receives action requests after AUDITOR review, presents each exact operation to the human, and executes only after explicit per-action confirmation.
 
 ## Integrated intelligence capabilities
 
@@ -33,7 +34,7 @@ Metrics currently describe the current application process; they are not histori
 - Python 3.11+ CLI and Pydantic data contracts.
 - LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
 - SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
-- Local stdio MCP server with the complete four-agent workflow, read-only diagnostics, audit/proposal lookup and decision-history lookup.
+- Local stdio MCP server with the four-specialist workflow and pending action-plan output; MCP cannot authorize or execute repairs.
 - Fixed diagnostics; AI-generated commands are never executed.
 - Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
 - Explicit CLI confirmation before recording an approval or rejection. Decisions are records only and do not trigger repairs.
@@ -41,11 +42,22 @@ Metrics currently describe the current application process; they are not histori
 
 ## Human-authorized repair execution
 
-The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). AETHER CORE is intended to execute only registered, schema-validated repair actions after explicit approval of the exact proposal hash. Approval must be one-time, expire, and never authorize arbitrary model-generated shell commands. A first local action-registry foundation now exists: a strictly validated `ensure_directory` operation that accepts only a relative path under an explicitly supplied repair root. It has no shell execution path. The approval-consumption gate, execution journal, rollback/verification workflow, and trusted human authorization UI are still under development; therefore this is **not yet an enabled end-to-end repair feature**.
+The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). A first end-to-end local execution path is implemented for one narrowly scoped action: `ensure_directory`, which creates a relative directory under an explicitly selected existing root. FIXER can request this typed action; the orchestrator validates it and creates a pending plan after AUDITOR review. The final EXECUTOR presents the exact action, parameters, target, expiry and digest, then asks the human to type the plan-specific authorization phrase. Rejection or cancellation causes no change. Approval is consumed atomically once, expires, is bound to the exact action parameters and target, and cannot be replayed. The handler never runs shell commands, scripts or arbitrary model text.
+
+Example:
+
+```bash
+aether-core action-plan ensure_directory --params '{"relative_path":"cache"}' --root "$HOME"
+aether-core execute-action PLAN_ID --hash SHA256 --by "Your identity" --root "$HOME"
+```
+
+The executor displays the exact request and asks for the confirmation phrase. Every action is separately authorized.
+
+This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` is currently in the allow-list. Additional typed handlers, full backup/rollback and postcondition verification, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
 
 ## Safety limitations
 
-This is an early development release, not an autonomous repair product. No repair executor is included. The Docker sandbox currently runs only one fixed, read-only version check; it is not a general-purpose command runner. Approval records are audit evidence only; they do not authorize or trigger code execution. MCP tools are read-only. This project has not undergone an independent security audit.
+This is an early development release, not a production-ready autonomous repair product. The Docker sandbox currently runs only one fixed, read-only version check; it is not a general-purpose command runner. Proposal-level approval records remain separate from execution authorization. MCP exposes plans but cannot approve or execute actions. This project has not undergone an independent security audit.
 
 ## Install
 
@@ -100,7 +112,7 @@ The CLI displays the proposal and requires typing the exact confirmation phrase.
 Run `aether-core-mcp` for a local stdio MCP server. Tools:
 
 - `recopilar_diagnosticos`
-- `ejecutar_flujo_completo` (SCOUT → ANALYST → FIXER → AUDITOR)
+- `ejecutar_flujo_completo` (SCOUT → ANALYST → FIXER → AUDITOR; returns pending action plans only)
 - `consultar_auditoria`
 - `consultar_propuesta`
 - `consultar_decisiones`
@@ -111,7 +123,7 @@ The MCP interface is read-only. Do not expose an unauthenticated MCP server to a
 
 ## Roadmap
 
-One-time approval consumption, target binding, a fail-closed executor, more reversible OS-specific handlers, rollback verification, failure-injection tests and security review. Roadmap items are not implemented features.
+More allow-listed actions, full backup/rollback and postcondition verification, durable execution evidence, trusted graphical human approval, failure-injection coverage and independent security review. Roadmap items are not implemented features.
 
 ## License
 
