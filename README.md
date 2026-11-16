@@ -138,7 +138,7 @@ Run `aether-core-mcp` for a local stdio MCP server. Tools:
 - `listar_habilidades`
 - `ejecutar_habilidad` (only registered read-only skills)
 
-The MCP interface is read-only. It does not perform the fifth component's human-authorized execution step. Do not expose an unauthenticated MCP server to a network.
+The MCP interface does not execute system repairs. It can collect diagnostics and persist audits, proposals and pending action plans, but it cannot authorize or execute the fifth component's repair step. Do not expose an unauthenticated MCP server to a network.
 
 ## Roadmap
 
