@@ -59,7 +59,7 @@ Metrics currently describe recorded agent stages; they are not historical long-t
 
 ## Human-authorized repair execution
 
-The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). The **05 EXECUTOR** component has a first end-to-end local execution path for one narrowly scoped action: `ensure_directory`, which creates a relative directory under an explicitly selected existing root. FIXER can request this typed action; the orchestrator validates it and creates a pending plan after AUDITOR review. EXECUTOR presents the exact action, parameters, target, expiry and digest, then asks the human to type the plan-specific authorization phrase. Rejection or cancellation causes no change. Approval is consumed atomically once, expires, is bound to the exact action parameters and target, and cannot be replayed. The handler never runs shell commands, scripts or arbitrary model text.
+The target design is documented in [APPROVED_REPAIR_EXECUTION.md](docs/APPROVED_REPAIR_EXECUTION.md). The **05 EXECUTOR** component has a first end-to-end local execution path for two narrowly scoped actions on supported POSIX systems: `ensure_directory`, which creates relative directories under an explicitly selected existing root, and `create_empty_file`, which creates a new empty file with mode 0600 without overwriting an existing path. FIXER can request this typed action; the orchestrator validates it and creates a pending plan after AUDITOR review. EXECUTOR presents the exact action, parameters, target, expiry and digest, then asks the human to type the plan-specific authorization phrase. Rejection or cancellation causes no change. Approval is consumed atomically once, expires, is bound to the exact action parameters and target, and cannot be replayed. The handler never runs shell commands, scripts or arbitrary model text.
 
 Example:
 
@@ -70,7 +70,7 @@ aether-core execute-action PLAN_ID --hash SHA256 --by "Your identity" --root "$H
 
 The Executor displays the exact request and asks for the confirmation phrase. Every action is separately authorized.
 
-This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` is currently in the allow-list. Its race-safe implementation uses descriptor-relative no-follow filesystem APIs and is enabled only on supported POSIX systems (Linux/macOS); Windows and other platforms fail closed rather than risk symlink/reparse-point races. Additional typed handlers, full backup/rollback, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
+This is a first narrow execution capability, not general-purpose command execution or complete autonomous repair. Only `ensure_directory` and `create_empty_file` are currently in the allow-list. Both use race-safe descriptor-relative no-follow filesystem APIs uses descriptor-relative no-follow filesystem APIs and is enabled only on supported POSIX systems (Linux/macOS); Windows and other platforms fail closed rather than risk symlink/reparse-point races. Additional typed handlers, full backup/rollback, richer execution journaling, a trusted graphical approval UI, and independent security review remain pending.
 
 ## Safety limitations
 
