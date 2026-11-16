@@ -52,7 +52,8 @@ def build_parser():
     plan.add_argument("analysis", nargs="+", help="Analysis text to turn into a proposal")
 
     action_plan = sub.add_parser("action-plan", help="Create a reviewable plan for one allow-listed local action")
-    action_plan.add_argument("action", choices=("ensure_directory",))
+    from .repair_actions import registered_action_ids
+    action_plan.add_argument("action", choices=registered_action_ids())
     action_plan.add_argument("--params", required=True, help="JSON parameters for the exact action")
     action_plan.add_argument("--root", required=True, help="Existing directory that bounds the change")
     action_plan.add_argument("--minutes", type=int, default=10)
