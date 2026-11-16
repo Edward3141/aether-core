@@ -88,3 +88,32 @@ def test_cli_exposes_skill_commands():
     ])
     assert args.command == "skill"
     assert args.name == "knowledge.search"
+
+
+@pytest.mark.parametrize("agent", ["SCOUT", "ANALYST", "FIXER", "AUDITOR"])
+def test_each_agent_has_exactly_50_scoped_skills(tmp_path, agent):
+    registry = make_registry(tmp_path)
+    skills = registry.for_agent(agent)
+    assert len(skills) == 50
+    assert all(agent in item["allowed_callers"] for item in skills)
+    assert all(item["name"].startswith(agent.lower() + ".") for item in skills)
+
+
+def test_agent_skill_cannot_be_called_by_another_agent(tmp_path):
+    registry = make_registry(tmp_path)
+    with pytest.raises(PermissionError):
+        registry.execute(
+            "fixer.rollback.plan.design", caller="SCOUT",
+            arguments={"subject": "test", "evidence": []},
+        )
+
+
+def test_role_skill_returns_bounded_structured_advisory(tmp_path):
+    registry = make_registry(tmp_path)
+    result = registry.execute(
+        "analyst.root.cause.analysis", caller="ANALYST",
+        arguments={"subject": "service crash", "evidence": ["error at 10:00"]},
+    )
+    assert result["agent"] == "ANALYST"
+    assert result["result_type"] == "structured_advisory"
+    assert "does not execute commands" in result["limitations"][1]
