@@ -281,7 +281,10 @@ def _create_file(
         ),
     )
 
-_HANDLERS = {\n    "ensure_directory": (EnsureDirectoryParams, _ensure_directory),\n    "create_file": (CreateFileParams, _create_file),\n}
+_HANDLERS = {
+    "ensure_directory": (EnsureDirectoryParams, _ensure_directory),
+    "create_file": (CreateFileParams, _create_file),
+}
 
 
 def registered_action_ids() -> tuple[str, ...]:
