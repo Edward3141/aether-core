@@ -20,7 +20,8 @@ Open-source, cross-platform Python framework for system inspection, evidence-bas
 - LiteLLM adapter with independent model, API base and API key settings per agent; shared settings are fallback values.
 - SQLite audit, proposal and approval-record persistence, including proposal integrity checks.
 - Local stdio MCP server with read-only diagnostics, audit lookup and proposal lookup.
-- Fixed diagnostics; AI-generated commands are never executed.\n- Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
+- Fixed diagnostics; AI-generated commands are never executed.
+- Optional Docker sandbox for one fixed, read-only Python version check: no network, no host mounts, read-only root filesystem, dropped capabilities, non-root UID, and resource limits.
 - Explicit CLI confirmation before recording an approval or rejection.
 - GitHub Actions matrix for Linux, Windows and macOS (Python 3.11–3.13).
 
@@ -52,14 +53,16 @@ The default model is `ollama/qwen2.5:7b`; ensure it is available locally if usin
 
 ```bash
 aether-core doctor
+aether-core sandbox-check
 aether-core ask "Explain this system diagnostic"
 aether-core audit
+aether-core plan "Paste the analyst's evidence-based summary here"
 aether-core --help
 pytest
 ruff check . --select E4,E7,E9,F
 ```
 
-To record a human decision for a proposal, first obtain its exact ID and SHA-256 from the stored proposal. Then run:
+To record a human decision for a proposal, first obtain its exact ID and SHA-256 from the output of `aether-core plan`. Then run:
 
 ```bash
 aether-core approve PROPOSAL_ID --hash SHA256 --by "Your name" --minutes 15
