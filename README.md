@@ -42,9 +42,9 @@ The intelligence services are now connected to the normal application workflow, 
 - **CLI integration:** `aether-core status` displays an intelligence report; `aether-core report --format json` or `--format markdown` exports it. Use `--output report.json` to write a file.
 - **Cross-Platform Capability Registry:** a role-scoped catalog maps system, process, service, storage, memory, network, log, filesystem, package and security references. Each entry now reports its actual implementation status. Several entries remain metadata-only; the catalog never executes command strings or model-generated scripts. Use `aether-core capabilities` or `aether-core capabilities --agent SCOUT` to inspect it.
 - **Built-in Skills:** 50 role-scoped skills for each of the four intelligence agents (200 total), plus shared core services. SCOUT, ANALYST, FIXER and AUDITOR receive different capabilities in the primary workflow. Each skill validates bounded input and returns structured advisory output; the model cannot register code, execute shell commands, authorize changes or bypass human approval. Shared evidence search exposes verified entries only.
-- No new third-party dependency is required. Existing agent contracts and original audit/proposal database schema remain unchanged. The new knowledge ledger is stored separately at `~/.aether-core/aether-core-knowledge.sqlite3` by default.
+- The read-only host inspection adapters use the declared `psutil` dependency. Existing agent contracts and original audit/proposal database schema remain unchanged. The new knowledge ledger is stored separately at `~/.aether-core/aether-core-knowledge.sqlite3` by default.
 
-Metrics currently describe the current application process; they are not historical long-term agent benchmarks. System monitoring is read-only and does not claim temperature or service-health coverage.
+Metrics currently describe recorded agent stages; they are not historical long-term quality guarantees. System monitoring is read-only and does not claim temperature, complete service health, log inspection, package inventory or security-posture coverage.
 
 ## Current capabilities
 
