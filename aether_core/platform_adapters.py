@@ -17,9 +17,9 @@ from .models import Finding, Risk
 _TIMEOUT_SECONDS = 5
 _MAX_OUTPUT = 64_000
 _SECRET_PATTERNS = (
-    (re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\\s*[:=]\\s*)\\S+"), r"\\1\\2[REDACTED]"),
-    (re.compile(r"(?i)(authorization\\s*:\\s*bearer\\s+)(\\S+)"), r"\\1[REDACTED]"),
-    (re.compile(r"(?i)(https?://)([^/@\\s]+:[^/@\\s]+@)"), r"\\1[REDACTED]"),
+    (re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\s*[:=]\s*)\S+"), r"\1\2[REDACTED]"),
+    (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)(\S+)"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(https?://)([^/@\s]+:[^/@\s]+@)"), r"\1[REDACTED]"),
 )
 
 
