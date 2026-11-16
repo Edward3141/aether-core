@@ -34,7 +34,7 @@ A green CI run is necessary, but is never sufficient by itself.
 - Negative tests cover no approval, wrong text, wrong hash, changed parameters,
   changed target, expired plan, replay, concurrent approval, and non-interactive use.
 - MCP and all public APIs cannot bypass the human approval gate.
-- The audit record identifies the human attestation and exact action digest.
+- The audit record stores the operator-supplied attestation label and exact action digest; the label is not an identity-authentication mechanism.
 
 ### 3. Repair safety and recovery
 - Every action has a strict typed schema and a reviewed allow-list implementation.
