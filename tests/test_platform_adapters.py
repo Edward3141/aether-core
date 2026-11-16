@@ -75,6 +75,6 @@ def test_windows_adapter_does_not_claim_unimplemented_package_or_log_support(mon
     monkeypatch.setattr(adapters.shutil, "which", lambda name: None)
     findings = adapters.collect_native_findings()
     by_title = {item.title: item for item in findings}
-    assert "not implemented" in by_title["Package inventory"].detail
-    assert "not enabled" in by_title["System error log summary"].detail
+    assert "Probe unavailable" in by_title["Package inventory"].detail
+    assert "Probe unavailable" in by_title["System error log summary"].detail
     assert "Windows native services" in by_title
