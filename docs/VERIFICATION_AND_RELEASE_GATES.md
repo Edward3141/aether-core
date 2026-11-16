@@ -93,7 +93,7 @@ The current repair allow-list contains only `ensure_directory`. The skill regist
 contains registered entries whose generic advisory handlers are not equivalent to
 independent operational implementations. The system snapshot is limited to basic
 host/resource metadata. Full independent multi-agent post-repair verification,
-general backup/rollback, race-safe cross-platform filesystem changes, and a complete
+general backup/rollback, Windows-safe filesystem mutation, and a complete trusted
 human approval interface remain release blockers until implemented and tested.
 
 ## Release decision
