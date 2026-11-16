@@ -79,22 +79,20 @@ A green CI run is necessary, but is never sufficient by itself.
 
 ## Current verified baseline (2026-11-16)
 
-The main branch commit `8d367786487ed3a66a0504a23e8268321694066c` had:
-- 67 tests passing in the recorded CI security run;
-- the nine-job OS/Python test matrix passing;
-- Ruff passing;
-- pip-audit reporting no known vulnerabilities;
-- Bandit reporting no issues;
-- CodeQL analysis completing successfully.
+The merged candidate on `main` is commit
+`2c6c56a966fe039911a2af99b0be31970048bd39` (PR #2).
 
-These results are a baseline, not proof of project completion.
+GitHub Actions results tied to that exact merge commit:
+- OS/Python matrix: 9/9 jobs passed (Ubuntu, Windows and macOS × Python 3.11, 3.12 and 3.13).
+- Security workflow: passed; 107 tests passed and 1 platform-conditional test skipped.
+- Ruff correctness checks: passed.
+- pip-audit: no known vulnerabilities reported.
+- Bandit: no issues identified at the configured severity/confidence threshold.
+- CodeQL analysis: passed.
 
-The current repair allow-list contains `ensure_directory` and `create_empty_file`; it remains far short of general system repair. The skill registry
-contains registered entries whose generic advisory handlers are not equivalent to
-independent operational implementations. The system snapshot is limited to basic
-host/resource metadata. Full independent multi-agent post-repair verification,
-general backup/rollback, Windows-safe filesystem mutation, and a complete trusted
-human approval interface remain release blockers until implemented and tested.
+A skipped test is disclosed and is not counted as an executed pass. These checks establish the recorded automated baseline only; they do not prove that every host configuration, optional native utility, model provider, filesystem race, or deployment environment is defect-free.
+
+The implemented release scope is recorded in [RELEASE_STATUS.md](RELEASE_STATUS.md). The repair allow-list is limited to `ensure_directory` and `create_empty_file`; it is not general system repair. The skill registry contains entries whose generic advisory handlers are not independent operational implementations. Full backup/restore, broad repair handlers, Windows filesystem mutation, a graphical approval interface, and independent penetration testing are outside this release scope and must not be advertised as implemented.
 
 ## Release decision
 
