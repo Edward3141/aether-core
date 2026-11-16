@@ -13,7 +13,7 @@ def test_fixed_probe_uses_no_shell_bounded_timeout_and_no_stdin(monkeypatch):
         return SimpleNamespace(returncode=0, stdout="safe output", stderr="")
 
     monkeypatch.setattr(adapters.subprocess, "run", fake_run)
-    assert adapters._run_fixed(("systemctl", "list-units")) == (0, "safe output\\n")
+    assert adapters._run_fixed(("systemctl", "list-units")) == (0, "safe output\n")
     assert seen["shell"] is False
     assert seen["timeout"] == adapters._TIMEOUT_SECONDS
     assert seen["stdin"] is adapters.subprocess.DEVNULL
@@ -27,7 +27,7 @@ def test_fixed_probe_redacts_secrets_and_bounds_output(monkeypatch):
         "run",
         lambda *args, **kwargs: SimpleNamespace(
             returncode=0,
-            stdout="password=hunter2\\nAuthorization: Bearer abc123\\n",
+            stdout="password=hunter2\nAuthorization: Bearer abc123\n",
             stderr="",
         ),
     )
@@ -42,7 +42,7 @@ def test_linux_native_adapters_report_services_packages_logs_firewall_and_home(m
     monkeypatch.setattr(adapters.platform, "system", lambda: "Linux")
     monkeypatch.setattr(adapters.shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(adapters, "_run_fixed", lambda argv: (
-        0, "active\\n" if argv[0] in {"ufw", "firewall-cmd"} else "one\\ntwo\\n"
+        0, "active\n" if argv[0] in {"ufw", "firewall-cmd"} else "one\ntwo\n"
     ))
     findings = adapters.collect_native_findings()
     titles = {item.title for item in findings}
@@ -59,7 +59,7 @@ def test_linux_native_adapters_report_services_packages_logs_firewall_and_home(m
 def test_macos_native_adapters_are_fixed_and_bounded(monkeypatch):
     monkeypatch.setattr(adapters.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(adapters.shutil, "which", lambda name: "/usr/bin/" + name)
-    monkeypatch.setattr(adapters, "_run_fixed", lambda argv: (0, "one\\ntwo\\n"))
+    monkeypatch.setattr(adapters, "_run_fixed", lambda argv: (0, "one\ntwo\n"))
     findings = adapters.collect_native_findings()
     titles = {item.title for item in findings}
     assert {
