@@ -330,6 +330,15 @@ class Executor:
 
     def __init__(self, database: Database):
         self.database = database
+        self.capability_registry = None
+
+    def bind_capabilities(self, registry) -> None:
+        self.capability_registry = registry
+
+    def available_capabilities(self) -> list[dict]:
+        if self.capability_registry is None:
+            return []
+        return self.capability_registry.list_for_role("EXECUTOR")
 
     def execute_after_human_prompt(
         self, plan_id: str, digest: str, approved_by: str, root: Path,
