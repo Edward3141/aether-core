@@ -13,6 +13,7 @@ from .database import Database
 from .diagnostics import collect_diagnostics
 from .models import ApprovalRecord
 from .orchestrator import Orchestrator
+from .extended.reports import report_json, report_markdown
 
 console = Console()
 
@@ -27,7 +28,12 @@ def build_parser():
 
     sub.add_parser("doctor", help="Run fixed read-only local diagnostics")
     sub.add_parser("sandbox-check", help="Run a fixed diagnostic in the restricted Docker sandbox")
-    sub.add_parser("audit", help="Run all four agents: inspect, analyze, propose and review")
+    sub.add_parser("audit", help="Run all four agents and update integrated intelligence services")
+    sub.add_parser("status", help="Show integrated system snapshot, agent metrics and knowledge ledger")
+
+    report = sub.add_parser("report", help="Export an AETHER CORE intelligence report")
+    report.add_argument("--format", choices=("json", "markdown"), default="markdown")
+    report.add_argument("--output", help="Write report to this path; otherwise print it")
 
     ask = sub.add_parser("ask", help="Ask the configured default AI model")
     ask.add_argument("message", nargs="+")
@@ -49,12 +55,9 @@ async def run(args):
     db = Database(database_path())
     if args.command == "sandbox-check":
         from .sandbox.docker_runner import run_check
-
         result = run_check("python-version")
-        console.print(Panel(
-            Text(result.output or "(no output)"),
-            title=f"Docker sandbox: {result.check_id} — exit {result.exit_code}",
-        ))
+        console.print(Panel(Text(result.output or "(no output)"),
+                            title=f"Docker sandbox: {result.check_id} — exit {result.exit_code}"))
         return result.exit_code
 
     if args.command == "doctor":
@@ -64,6 +67,19 @@ async def run(args):
             console.print(Text(f"{finding.risk.value} {finding.title}: {finding.detail}"))
         return 0
 
+    if args.command in {"status", "report"}:
+        workflow = Orchestrator(db)
+        payload = workflow.intelligence_report()
+        rendered = report_json(payload) if args.command == "report" and args.format == "json" else (
+            report_markdown(payload) if args.command == "report" else report_markdown(payload))
+        if args.command == "report" and args.output:
+            from pathlib import Path
+            Path(args.output).write_text(rendered, encoding="utf-8")
+            console.print(f"Report written to {args.output}")
+        else:
+            console.print(Text(rendered))
+        return 0
+
     if args.command == "audit":
         workflow = Orchestrator(db)
         report, analysis = await workflow.audit()
@@ -71,24 +87,21 @@ async def run(args):
         console.print(f"[green]Audit saved:[/] {report.id}")
         console.print(Panel(Text(report.summary), title="SCOUT"))
         console.print(Panel(Text(analysis), title="ANALYST"))
-        proposal_text = (
-            f"{proposal.title}\nID: {proposal.id}\n"
+        proposal_text = (f"{proposal.title}\nID: {proposal.id}\n"
             f"SHA-256: {proposal.content_hash()}\nRisk: {proposal.risk.value}\n\n"
-            + "\n".join(f"- {step}" for step in proposal.steps)
-        )
+            + "\n".join(f"- {step}" for step in proposal.steps))
         console.print(Panel(Text(proposal_text), title="FIXER — Proposal only"))
         console.print(Panel(Text(review["advisory"]), title="AUDITOR — Advisory review"))
         console.print("[yellow]No repair was executed. Human review is required.[/]")
+        console.print("[cyan]Integrated intelligence metrics and evidence memory updated.[/]")
         return 0
 
     if args.command == "plan":
         proposal, review = await Orchestrator(db).plan(" ".join(args.analysis))
-        proposal_text = (
-            f"{proposal.title}\nID: {proposal.id}\n"
+        proposal_text = (f"{proposal.title}\nID: {proposal.id}\n"
             f"SHA-256: {proposal.content_hash()}\nRisk: {proposal.risk.value}\n\n"
             + "\n".join(f"- {step}" for step in proposal.steps)
-            + "\n\nThis is a proposal only; no action was executed."
-        )
+            + "\n\nThis is a proposal only; no action was executed.")
         console.print(Panel(Text(proposal_text), title="FIXER — Remediation proposal"))
         console.print(Text(review["message"]))
         console.print(Text(review["advisory"]))
@@ -96,10 +109,7 @@ async def run(args):
 
     if args.command == "ask":
         from .providers import ask_model
-
-        answer = await ask_model(
-            "You are AETHER CORE, a careful assistant.", " ".join(args.message)
-        )
+        answer = await ask_model("You are AETHER CORE, a careful assistant.", " ".join(args.message))
         console.print(Text(answer))
         return 0
 
@@ -114,12 +124,9 @@ async def run(args):
         if proposal.content_hash() != args.proposal_hash:
             raise ValueError("Proposal hash mismatch; review the current proposal.")
         decision = "approved" if args.command == "approve" else "rejected"
-        review_text = (
-            f"{proposal.title}\nID: {proposal.id}\n"
-            f"SHA-256: {proposal.content_hash()}\n"
-            f"Decision: {decision.upper()}\n"
-            "This records a human decision only. It does not execute repairs."
-        )
+        review_text = (f"{proposal.title}\nID: {proposal.id}\n"
+            f"SHA-256: {proposal.content_hash()}\nDecision: {decision.upper()}\n"
+            "This records a human decision only. It does not execute repairs.")
         console.print(Panel(Text(review_text), title="AETHER CORE — Human review"))
         expected = f"{decision.upper()} {proposal.id}"
         typed = console.input(f"Type exactly '{expected}' to continue: ")
@@ -127,14 +134,9 @@ async def run(args):
             console.print("[yellow]Decision cancelled; no record was saved.[/]")
             return 2
         now = datetime.now(UTC)
-        record = ApprovalRecord(
-            proposal_id=proposal.id,
-            proposal_hash=proposal.content_hash(),
-            decision=decision,
-            approved_by=args.approved_by,
-            created_at=now,
-            expires_at=now + timedelta(minutes=args.minutes),
-        )
+        record = ApprovalRecord(proposal_id=proposal.id, proposal_hash=proposal.content_hash(),
+            decision=decision, approved_by=args.approved_by, created_at=now,
+            expires_at=now + timedelta(minutes=args.minutes))
         db.save_approval(record)
         console.print(f"[green]Human decision recorded:[/] {decision}")
         console.print("[yellow]No repair was executed.[/]")
