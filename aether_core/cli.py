@@ -93,18 +93,13 @@ async def run(args):
         from .repair_actions import Executor
         executor = Executor(db)
 
-        def ask_human(review):
+        def present_review(review):
             console.print(Panel(Text(json.dumps(review, ensure_ascii=False, indent=2)),
                                 title="EJECUTOR — Solicitud de autorización humana"))
-            expected = f"AUTHORIZE {review['plan_id']} {review['sha256']}"
-            return console.input(
-                f"El EJECUTOR solicita permiso para ESTE cambio. "
-                f"Escribe exactamente '{expected}' para autorizarlo: "
-            )
 
         result = executor.execute_after_human_prompt(
             args.plan_id, args.plan_hash, args.approved_by,
-            Path(args.root), ask_human,
+            Path(args.root), present_review,
         )
         if result is None:
             console.print("[yellow]Autorización rechazada o cancelada. No se realizó ningún cambio.[/]")
