@@ -93,6 +93,51 @@ def test_symlink_escape_is_rejected(tmp_path, monkeypatch):
 
 
 
+def test_action_plan_binds_explicit_handler_version(tmp_path, monkeypatch):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(
+        db, "ensure_directory", {"relative_path": "versioned"}, tmp_path
+    )
+    assert plan["handler_version"] == 1
+    stored = db.get_action_plan(plan["id"])
+    assert '"handler_version": 1' in stored["params_json"]
+    with db.connect() as connection:
+        connection.execute(
+            "UPDATE action_plans SET params_json=? WHERE id=?",
+            ('{"handler_version":0,"parameters":{"relative_path":"versioned"}}', plan["id"]),
+        )
+    monkeypatch.setattr(
+        "aether_core.repair_actions.input",
+        lambda *_args, **_kwargs: pytest.fail("stale handler plan must fail before prompting"),
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="integrity check"):
+        _execute_as_human(db, plan, tmp_path, monkeypatch)
+    assert not (tmp_path / "versioned").exists()
+
+
+def test_claimed_parameters_are_revalidated_before_side_effect(tmp_path, monkeypatch):
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(
+        db, "ensure_directory", {"relative_path": "approved"}, tmp_path
+    )
+    original_consume = db.consume_action_plan
+
+    def tampered_claim(*args, **kwargs):
+        claim = original_consume(*args, **kwargs)
+        claim["params_json"] = (
+            '{"handler_version":1,"parameters":{"relative_path":"tampered"}}'
+        )
+        return claim
+
+    monkeypatch.setattr(db, "consume_action_plan", tampered_claim)
+    with pytest.raises(ValueError, match="integrity check"):
+        _execute_as_human(db, plan, tmp_path, monkeypatch)
+    assert not (tmp_path / "approved").exists()
+    assert not (tmp_path / "tampered").exists()
+    assert db.get_action_plan(plan["id"])["status"] == "failed"
+
+
 def test_expired_plan_is_rejected_without_side_effect(tmp_path, monkeypatch):
     db = Database(tmp_path / "test.db")
     plan = create_action_plan(db, "ensure_directory", {"relative_path": "expired"}, tmp_path, 1)
