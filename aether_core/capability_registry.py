@@ -175,6 +175,8 @@ class CapabilityRegistry:
                 for role in ALL_ROLES
             },
             "catalog_size": len(self._capabilities),
+            "implementation_status": {item.capability_id: item.implementation_status for item in self._capabilities.values()},
+            "implemented_read_only_count": sum(item.implementation_status == "implemented_read_only" for item in self._capabilities.values()),
             "command_execution_enabled": False,
             "repair_execution_source": "typed allow-list only; individual human approval required",
         }
