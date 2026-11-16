@@ -20,6 +20,8 @@ class Orchestrator:
             database.path.with_name("aether-core-agent-metrics.sqlite3")
         )
         self.skills = build_builtin_registry(self.knowledge, self.scorecard)
+        for agent in (self.scout, self.analyst, self.fixer, self.auditor):
+            agent.bind_skills(self.skills)
 
     async def audit(self) -> tuple[AuditReport, str]:
         try:
