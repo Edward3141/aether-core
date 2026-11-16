@@ -62,7 +62,7 @@ def target_identity(root: Path) -> str:
 def _supports_race_safe_directory_creation() -> bool:
     """Return whether this runtime supports descriptor-relative no-follow creation."""
     return (
-        os.name != "nt"
+        platform.system() in {"Linux", "Darwin"}
         and all(
             operation in os.supports_dir_fd
             for operation in (os.open, os.mkdir, os.stat, os.rmdir)
