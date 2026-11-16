@@ -54,6 +54,8 @@ def test_linux_native_adapters_report_services_packages_logs_firewall_and_home(m
         "Home directory permissions",
     }.issubset(titles)
     assert all(len(item.detail) <= 4000 for item in findings)
+    firewall = next(item for item in findings if item.title == "Firewall posture")
+    assert "active" in firewall.detail
 
 
 def test_macos_native_adapters_are_fixed_and_bounded(monkeypatch):
