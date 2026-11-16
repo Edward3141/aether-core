@@ -70,7 +70,7 @@ _CATALOG = (
                {"linux": ("ip address", "ip route", "ss -tulpen"),
                 "macos": ("ifconfig", "netstat -rn", "scutil --dns"),
                 "windows": ("Get-NetIPConfiguration", "Get-NetTCPConnection", "route print")},
-               "read_only", implementation_status="implemented_read_only"),
+               "read_only", implementation_status="partial_read_only"),
     Capability("logs.inspect", "logs", "Inspect system and application logs",
                READ_ROLES + ("FIXER", "EXECUTOR"), ("linux", "macos", "windows"),
                {"linux": ("journalctl -n 200", "dmesg --ctime"),
