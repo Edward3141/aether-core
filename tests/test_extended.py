@@ -36,3 +36,28 @@ def test_monitor_and_reports_are_serializable(tmp_path):
     report = build_report(snapshot=snap.to_dict())
     assert '"schema_version": 1' in report_json(report)
     assert "does not authorize repairs" in report_markdown(report)
+
+
+def test_knowledge_counts_include_all_entries(tmp_path):
+    store = KnowledgeStore(tmp_path / "counts.db")
+    first = store.add("disk", "first", source="SCOUT")
+    store.add("disk", "second", source="SCOUT")
+    assert store.count() == 2
+    assert store.count(status="unverified") == 2
+    assert store.verify(first, evidence={"human_check": "confirmed"})
+    assert store.count(status="verified") == 1
+    assert store.count(status="unverified") == 1
+
+
+def test_scorecard_persists_across_instances(tmp_path):
+    path = tmp_path / "metrics.db"
+    first = AgentScorecard(path)
+    first.record("SCOUT", success=True)
+    first.record("SCOUT", success=False)
+    second = AgentScorecard(path)
+    metric = second.snapshot()[0]
+    assert metric.agent == "SCOUT"
+    assert metric.runs == 2
+    assert metric.successful == 1
+    assert metric.failed == 1
+    assert metric.success_rate == 0.5
