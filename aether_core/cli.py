@@ -64,9 +64,20 @@ async def run(args):
         return 0
 
     if args.command == "audit":
-        report, analysis = await Orchestrator(db).audit()
+        workflow = Orchestrator(db)
+        report, analysis = await workflow.audit()
+        proposal, review = await workflow.plan(analysis)
         console.print(f"[green]Audit saved:[/] {report.id}")
+        console.print(Panel(report.summary, title="SCOUT"))
         console.print(Panel(analysis, title="ANALYST"))
+        console.print(Panel(
+            f"[bold]{proposal.title}[/]\\nID: {proposal.id}\\n"
+            f"SHA-256: {proposal.content_hash()}\\nRisk: {proposal.risk.value}\\n\\n"
+            + "\\n".join(f"- {step}" for step in proposal.steps),
+            title="FIXER — Proposal only",
+        ))
+        console.print(Panel(review["advisory"], title="AUDITOR — Advisory review"))
+        console.print("[yellow]No repair was executed. Human review is required.[/]")
         return 0
 
     if args.command == "plan":
