@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.text import Text
 
 from . import __version__
 from .config import database_path
@@ -60,7 +61,7 @@ async def run(args):
         report = collect_diagnostics()
         console.print(Panel("AETHER CORE diagnostic report"))
         for finding in report.findings:
-            console.print(f"[bold]{finding.risk.value}[/] {finding.title}: {finding.detail}")
+            console.print(Text(f"{finding.risk.value} {finding.title}: {finding.detail}"))
         return 0
 
     if args.command == "audit":
@@ -68,15 +69,15 @@ async def run(args):
         report, analysis = await workflow.audit()
         proposal, review = await workflow.plan(analysis)
         console.print(f"[green]Audit saved:[/] {report.id}")
-        console.print(Panel(report.summary, title="SCOUT"))
-        console.print(Panel(analysis, title="ANALYST"))
+        console.print(Panel(Text(report.summary), title="SCOUT"))
+        console.print(Panel(Text(analysis), title="ANALYST"))
         console.print(Panel(
             f"[bold]{proposal.title}[/]\\nID: {proposal.id}\\n"
             f"SHA-256: {proposal.content_hash()}\\nRisk: {proposal.risk.value}\\n\\n"
             + "\\n".join(f"- {step}" for step in proposal.steps),
             title="FIXER — Proposal only",
         ))
-        console.print(Panel(review["advisory"], title="AUDITOR — Advisory review"))
+        console.print(Panel(Text(review["advisory"]), title="AUDITOR — Advisory review"))
         console.print("[yellow]No repair was executed. Human review is required.[/]")
         return 0
 
@@ -98,7 +99,7 @@ async def run(args):
         answer = await ask_model(
             "You are AETHER CORE, a careful assistant.", " ".join(args.message)
         )
-        console.print(answer)
+        console.print(Text(answer))
         return 0
 
     if args.command in {"approve", "reject"}:
