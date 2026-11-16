@@ -175,7 +175,7 @@ def collect_native_findings() -> list[Finding]:
                                      ["fixed netsh advfirewall state probe"], Risk.LOW))
         else:
             code, output = firewall
-            enabled = code == 0 and re.search(r"\\bstate\\s+on\\b", output, re.IGNORECASE) is not None
+            enabled = code == 0 and re.search(r"\bstate\s+on\b", output, re.IGNORECASE) is not None
             findings.append(_finding("Firewall posture",
                                      "At least one firewall profile reports ON." if enabled else "Firewall state is OFF or unknown.",
                                      ["fixed netsh advfirewall state probe"],
