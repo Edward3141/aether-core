@@ -117,7 +117,7 @@ def collect_native_findings() -> list[Finding]:
                                      ["fixed firewall status probes"], Risk.LOW))
         else:
             code, output = firewall
-            state = "active" if code == 0 and "active" in output.lower() else "inactive_or_unknown"
+            state = "active" if code == 0 and ("status: active" in output.lower() or output.strip().lower() == "running") else "inactive_or_unknown"
             findings.append(_finding("Firewall posture", f"Firewall probe state: {state}.",
                                      ["fixed ufw/firewall-cmd status probe"],
                                      Risk.INFO if state == "active" else Risk.MEDIUM))
