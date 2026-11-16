@@ -4,7 +4,7 @@ from __future__ import annotations
 import errno
 import os
 import stat
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PurePosixPath
 
 
 def _supports_descriptor_verification() -> bool:
