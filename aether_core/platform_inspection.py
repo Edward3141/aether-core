@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import platform
 import time
+
 import psutil
 
 from .models import Finding, Risk
