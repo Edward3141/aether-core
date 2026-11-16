@@ -78,9 +78,9 @@ def _mkdir_at(path: str, *, mode: int, dir_fd: int) -> None:
     os.mkdir(path, mode=mode, dir_fd=dir_fd)
 
 
-def _mkdir_at(name: str, parent_descriptor: int) -> None:
+def _mkdir_at(name: str, *, mode: int, dir_fd: int) -> None:
     """Small seam for deterministic failure-injection tests."""
-    os.mkdir(name, mode=0o755, dir_fd=parent_descriptor)
+    os.mkdir(name, mode=mode, dir_fd=dir_fd)
 
 
 def _ensure_directory(
