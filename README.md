@@ -55,7 +55,7 @@ The default model is `ollama/qwen2.5:7b`; ensure it is available locally if usin
 aether-core doctor
 aether-core sandbox-check
 aether-core ask "Explain this system diagnostic"
-aether-core audit
+aether-core audit  # runs all four agents in sequence
 aether-core plan "Paste the analyst's evidence-based summary here"
 aether-core --help
 pytest
@@ -75,9 +75,11 @@ The CLI displays the proposal and requires typing the exact confirmation phrase.
 
 Run `aether-core-mcp` for a local stdio MCP server. Tools:
 
-- `auditar_sistema`
+- `recopilar_diagnosticos`
+- `ejecutar_flujo_completo` (SCOUT → ANALYST → FIXER → AUDITOR)
 - `consultar_auditoria`
 - `consultar_propuesta`
+- `consultar_decisiones`
 
 The MCP interface is read-only. Do not expose an unauthenticated MCP server to a network.
 
