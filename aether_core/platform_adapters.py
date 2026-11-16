@@ -95,11 +95,15 @@ def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
             pass
         process.wait()
         reader.join(timeout=1)
-        return None
-    finally:
-        if process.stdout is not None:
+        if reader.is_alive() and process.stdout is not None:
             process.stdout.close()
+            reader.join(timeout=1)
+        return None
+
     reader.join(timeout=1)
+    if reader.is_alive() and process.stdout is not None:
+        process.stdout.close()
+        reader.join(timeout=1)
 
     output = b"".join(retained).decode("utf-8", errors="replace")
     if overflow.is_set():
