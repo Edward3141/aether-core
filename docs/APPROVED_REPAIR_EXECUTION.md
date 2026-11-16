@@ -39,10 +39,12 @@ added to the allow-list.
 
 ## Remaining work
 
-This is the first controlled execution capability, not general-purpose shell
-access and not completion of autonomous repair. More action handlers, verified backup/restore and rollback for future state-changing operations,
-richer execution journaling, broader per-platform failure-injection tests, and a
-trusted interactive approval UI remain necessary. The current `ensure_directory`
-handler only removes newly created empty directories after a later-step failure; it
-does not provide backup/restore for existing user data. Privileged, destructive,
+This remains a narrow controlled execution capability, not general-purpose shell
+access or completion of autonomous repair. More action handlers, verified backup/restore
+and rollback for future state-changing operations, richer execution journaling, broader
+per-platform failure-injection tests, and a trusted interactive approval UI remain
+necessary. `ensure_directory` removes only newly created empty directories after a
+later-step failure. `create_empty_file` removes only the exact newly created file if
+its post-write checks fail. Neither action modifies existing user data or provides
+general backup/restore. Privileged, destructive,
 irreversible and network-enabled actions remain blocked.
