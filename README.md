@@ -23,6 +23,7 @@ The intelligence services are now connected to the normal application workflow, 
 - **System monitoring:** read-only system snapshots collect platform, CPU count, load average where available, Linux memory where available, and disk capacity.
 - **Reports:** versioned JSON and Markdown reports combine system snapshots, process metrics and knowledge-ledger counts.
 - **CLI integration:** `aether-core status` displays an intelligence report; `aether-core report --format json` or `--format markdown` exports it. Use `--output report.json` to write a file.
+- **Built-in Skills:** an explicit registry provides `system.snapshot`, `knowledge.search`, `knowledge.stats`, and `report.generate`. Skills are deterministic local handlers, caller-restricted and schema-checked; evidence search exposes verified entries only. No dynamic code, shell, or model-generated scripts can be registered implicitly.
 - No new third-party dependency is required. Existing agent contracts and original audit/proposal database schema remain unchanged. The new knowledge ledger is stored separately at `~/.aether-core/aether-core-knowledge.sqlite3` by default.
 
 Metrics currently describe the current application process; they are not historical long-term agent benchmarks. System monitoring is read-only and does not claim temperature or service-health coverage.
