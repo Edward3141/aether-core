@@ -63,7 +63,7 @@ async def run(args):
         console.print(Panel(
             f"[bold]{proposal.title}[/]\nID: {proposal.id}\n"
             f"SHA-256: {proposal.content_hash()}\nRisk: {proposal.risk.value}\n\n"
-            + "\\n".join(f"- {step}" for step in proposal.steps)
+            + "\n".join(f"- {step}" for step in proposal.steps)
             + "\\n\\nThis is a proposal only; no action was executed.",
             title="FIXER — Remediation proposal",
         ))
