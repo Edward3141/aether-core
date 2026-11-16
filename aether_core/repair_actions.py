@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import platform
-import stat
 import sys
 import uuid
 from collections.abc import Callable
@@ -16,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .database import Database
+from .verification import PostRepairVerifier
 
 
 class EnsureDirectoryParams(BaseModel):
@@ -64,39 +64,11 @@ def _ensure_directory(params: EnsureDirectoryParams, root: Path) -> ActionResult
                 raise FileExistsError("A target path component is not a directory.")
     target = root.joinpath(*params.relative_path.split("/"))
     target.mkdir(parents=True, exist_ok=True)
-    verification = _verify_directory_postcondition(params, root)
     return ActionResult(
         action_id="ensure_directory",
-        status="succeeded",
-        detail=f"Directory exists and passed post-repair verification: {params.relative_path}",
-        verification=verification,
+        status="executed",
+        detail=f"Directory creation command completed: {params.relative_path}",
     )
-
-
-def _verify_directory_postcondition(
-    params: EnsureDirectoryParams, root: Path
-) -> list[str]:
-    """Independently re-check the final path three times; fail closed on any mismatch."""
-    canonical_root = root.resolve(strict=True)
-    target = canonical_root.joinpath(*params.relative_path.split("/"))
-    checks = []
-    for attempt in range(1, 4):
-        current = canonical_root
-        for part in params.relative_path.split("/"):
-            current = current / part
-            try:
-                mode = current.lstat().st_mode
-            except FileNotFoundError as exc:
-                raise RuntimeError("Post-repair verification failed: path is missing.") from exc
-            if stat.S_ISLNK(mode):
-                raise PermissionError("Post-repair verification failed: symlink detected.")
-            if not stat.S_ISDIR(mode):
-                raise RuntimeError("Post-repair verification failed: path component is not a directory.")
-        resolved = target.resolve(strict=True)
-        if resolved != target and canonical_root not in resolved.parents:
-            raise PermissionError("Post-repair verification failed: target escaped approved root.")
-        checks.append(f"pass-{attempt}: all components are real directories beneath approved root")
-    return checks
 
 
 _HANDLERS = {"ensure_directory": (EnsureDirectoryParams, _ensure_directory)}
@@ -177,6 +149,14 @@ def _execute_approved_plan(db: Database, plan_id: str, digest: str,
     try:
         params = schema.model_validate_json(claim["params_json"])
         result = handler(params, Path(claim["target_root"]))
+        verification = PostRepairVerifier().verify(
+            action_id, params.model_dump(mode="json"), Path(claim["target_root"])
+        )
+        result = result.model_copy(update={
+            "status": "succeeded",
+            "detail": result.detail + " Independent post-repair verification passed.",
+            "verification": verification,
+        })
         db.finish_action_plan(plan_id, "succeeded", result.model_dump_json())
         return result
     except Exception as exc:
