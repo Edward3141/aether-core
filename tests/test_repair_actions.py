@@ -136,3 +136,40 @@ async def test_agent_workflow_turns_fixer_action_into_unapproved_plan(tmp_path, 
     assert action_plan["target_root"] == str(db.path.parent.resolve())
     assert db.get_action_plan(action_plan["id"])["status"] == "pending"
     assert not (db.path.parent / "cache").exists()
+
+
+
+def test_executor_requests_exact_human_authorization_before_execution(tmp_path):
+    from aether_core.repair_actions import Executor
+
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "approved"}, tmp_path)
+    executor = Executor(db)
+    seen = []
+
+    def human_prompt(review):
+        seen.append(review)
+        return f"AUTHORIZE {review['plan_id']} {review['sha256']}"
+
+    result = executor.execute_after_human_prompt(
+        plan["id"], plan["sha256"], "human", tmp_path, human_prompt
+    )
+    assert seen[0]["action"] == "ensure_directory"
+    assert seen[0]["parameters"] == {"relative_path": "approved"}
+    assert result is not None and result.status == "succeeded"
+    assert (tmp_path / "approved").is_dir()
+
+
+def test_executor_rejection_never_changes_files(tmp_path):
+    from aether_core.repair_actions import Executor
+
+    db = Database(tmp_path / "test.db")
+    plan = create_action_plan(db, "ensure_directory", {"relative_path": "denied"}, tmp_path)
+    executor = Executor(db)
+    result = executor.execute_after_human_prompt(
+        plan["id"], plan["sha256"], "human", tmp_path,
+        lambda review: "NO",
+    )
+    assert result is None
+    assert db.get_action_plan(plan["id"])["status"] == "pending"
+    assert not (tmp_path / "denied").exists()
