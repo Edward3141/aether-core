@@ -17,16 +17,16 @@ from .models import Finding, Risk
 _TIMEOUT_SECONDS = 5
 _MAX_OUTPUT = 64_000
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\\s*[:=]\\s*)\\S+"),
-    re.compile(r"(?i)(authorization\\s*:\\s*bearer\\s+)\\S+"),
-    re.compile(r"(?i)(https?://)[^/@\\s]+:[^/@\\s]+@"),
+    re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\s*[:=]\s*)\S+"),
+    re.compile(r"(?i)(authorization\s*:\s*bearer\s+)\S+"),
+    re.compile(r"(?i)(https?://)[^/@\s]+:[^/@\s]+@"),
 )
 
 
 def _redact(value: str) -> str:
     value = value[:_MAX_OUTPUT]
     for pattern in _SECRET_PATTERNS:
-        value = pattern.sub(r"\\1\\2[REDACTED]", value)
+        value = pattern.sub(r"\1\2[REDACTED]", value)
     return value
 
 
@@ -53,7 +53,7 @@ def _run_fixed(argv: tuple[str, ...]) -> tuple[int, str] | None:
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return result.returncode, _redact(result.stdout + "\\n" + result.stderr)
+    return result.returncode, _redact(result.stdout + "\n" + result.stderr)
 
 
 def _finding(title: str, detail: str, evidence: list[str], risk: Risk = Risk.INFO) -> Finding:
@@ -89,8 +89,8 @@ def collect_native_findings() -> list[Finding]:
             Risk.MEDIUM,
         ))
         package_probes = (
-            ("dpkg-query", "-W", "-f=${binary:Package}\\n"),
-            ("rpm", "-qa", "--qf", "%{NAME}\\n"),
+            ("dpkg-query", "-W", "-f=${binary:Package}\n"),
+            ("rpm", "-qa", "--qf", "%{NAME}\n"),
         )
         package = next((_run_fixed(argv) for argv in package_probes if shutil.which(argv[0])), None)
         if package is None:
