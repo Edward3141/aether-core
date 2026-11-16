@@ -117,3 +117,10 @@ def test_role_skill_returns_bounded_structured_advisory(tmp_path):
     assert result["agent"] == "ANALYST"
     assert result["result_type"] == "structured_advisory"
     assert "does not execute commands" in result["limitations"][1]
+
+
+def test_cli_can_list_one_agents_skill_catalog():
+    from aether_core.cli import build_parser
+
+    args = build_parser().parse_args(["skills", "--agent", "SCOUT"])
+    assert args.agent == "SCOUT"
