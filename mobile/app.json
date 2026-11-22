@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "NEXO",
+    "slug": "nexo-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0C12"
+      },
+      "package": "com.edwardtejada.nexo"
+    }
+  }
+}
